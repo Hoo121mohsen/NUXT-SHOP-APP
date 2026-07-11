@@ -1,0 +1,26 @@
+{
+  "name": "nuxt-shop",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare"
+  },
+  "dependencies": {
+    "@pinia/nuxt": "^0.5.5",
+    "@supabase/supabase-js": "^2.45.0",
+    "html2pdf.js": "^0.10.2",
+    "jalaali-js": "^1.2.6",
+    "jsbarcode": "^3.11.6",
+    "nuxt": "^3.13.0",
+    "pinia": "^2.2.0",
+    "qrcode": "^1.5.4",
+    "vue": "^3.4.0"
+  },
+  "devDependencies": {
+    "@nuxtjs/tailwindcss": "^6.12.0"
+  }
+}

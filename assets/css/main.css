@@ -1,0 +1,129 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-stone-50 text-stone-800 transition-colors duration-200;
+  @apply dark:text-stone-100;
+  background-image:
+    radial-gradient(at 15% 0%, rgba(32, 168, 112, 0.08) 0px, transparent 50%),
+    radial-gradient(at 85% 20%, rgba(232, 115, 74, 0.07) 0px, transparent 50%);
+  background-attachment: fixed;
+}
+.dark body,
+html.dark body {
+  background-color: #0c0a09;
+  background-image:
+    radial-gradient(at 15% 0%, rgba(32, 168, 112, 0.16) 0px, transparent 50%),
+    radial-gradient(at 85% 20%, rgba(232, 115, 74, 0.12) 0px, transparent 50%);
+}
+
+/* اسکرول‌بار نازک برای ردیف‌های افقی محصولات و گالری */
+.scrollbar-thin::-webkit-scrollbar {
+  height: 6px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: rgba(20, 135, 90, 0.4);
+  border-radius: 999px;
+}
+
+/* گرد کردن input[type=color] نیتیو برای استفاده به‌عنوان دایره انتخاب رنگ محصول */
+.color-swatch-input {
+  -webkit-appearance: none;
+  appearance: none;
+  padding: 0;
+  background: none;
+}
+.color-swatch-input::-webkit-color-swatch-wrapper {
+  padding: 0;
+  border-radius: 9999px;
+  overflow: hidden;
+}
+.color-swatch-input::-webkit-color-swatch {
+  border: none;
+  border-radius: 9999px;
+}
+.color-swatch-input::-moz-color-swatch {
+  border: none;
+  border-radius: 9999px;
+}
+
+/* مخفی کردن عناصر غیرقابل‌چاپ (ناوبری، دکمه‌ها) هنگام چاپ فاکتور */
+@media print {
+  .print-hidden {
+    display: none !important;
+  }
+  body {
+    background: white !important;
+  }
+}
+
+/* ---------------------------------------------------------------
+   Skeleton Loader - افکت بارگذاری شیشه‌ای (Glassmorphism shimmer)
+   --------------------------------------------------------------- */
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: -400px 0;
+  }
+  100% {
+    background-position: 400px 0;
+  }
+}
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background-color: rgba(148, 163, 184, 0.18);
+  backdrop-filter: blur(6px);
+}
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.35) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  background-size: 400px 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+.dark .skeleton {
+  background-color: rgba(255, 255, 255, 0.06);
+}
+.dark .skeleton::after {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.08) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+}
+
+/* ---------------------------------------------------------------
+   Glassmorphism - سطوح شیشه‌ای مات برای نوار بالا، کارت‌ها و مودال‌ها
+   --------------------------------------------------------------- */
+.glass {
+  background: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+}
+.dark .glass {
+  background: rgba(28, 25, 23, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.glass-strong {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+.dark .glass-strong {
+  background: rgba(28, 25, 23, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
