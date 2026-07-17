@@ -18,9 +18,31 @@
       <BaseInput v-model="phone" label="شماره تماس" required />
       <BaseInput v-model="address" label="آدرس کامل" required />
 
-      <div class="flex justify-between border-t border-stone-200 pt-4 font-bold text-stone-800 dark:border-stone-700 dark:text-stone-100">
-        <span>مبلغ قابل پرداخت</span>
-        <span>{{ Number(cartStore.totalPrice).toLocaleString('fa-IR') }} تومان</span>
+      <!-- درخواست فاکتور رسمی (اختیاری) -->
+      <label class="flex items-center gap-2 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-700 dark:border-stone-700 dark:bg-stone-900/40 dark:text-stone-300">
+        <input v-model="needsOfficialInvoice" type="checkbox" class="h-4 w-4 rounded border-stone-300 text-brand-600 focus:ring-brand-500" />
+        نیاز به فاکتور رسمی (حقوقی) دارم
+      </label>
+      <div v-if="needsOfficialInvoice" class="grid gap-3 sm:grid-cols-3">
+        <BaseInput v-model="buyerCompanyName" label="نام شرکت/سازمان" />
+        <BaseInput v-model="buyerEconomicCode" label="شماره اقتصادی" />
+        <BaseInput v-model="buyerNationalId" label="شناسه ملی" />
+      </div>
+
+      <!-- ریز مبلغ: مبلغ خالص + مالیات بر ارزش افزوده طبق آیین‌نامه سازمان امور مالیاتی -->
+      <div class="space-y-1 border-t border-stone-200 pt-4 text-sm dark:border-stone-700">
+        <div class="flex justify-between text-stone-600 dark:text-stone-400">
+          <span>مبلغ خالص</span>
+          <span>{{ formatToman(subtotal) }} تومان</span>
+        </div>
+        <div class="flex justify-between text-stone-600 dark:text-stone-400">
+          <span>مالیات بر ارزش افزوده ({{ vatRate }}٪)</span>
+          <span>{{ formatToman(vatAmount) }} تومان</span>
+        </div>
+        <div class="flex justify-between border-t border-stone-200 pt-2 font-bold text-stone-800 dark:border-stone-700 dark:text-stone-100">
+          <span>مبلغ قابل پرداخت</span>
+          <span>{{ formatToman(cartStore.totalPrice) }} تومان</span>
+        </div>
       </div>
 
       <BaseButton type="submit" class="w-full" :loading="submitting">ثبت سفارش</BaseButton>
@@ -30,27 +52,42 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useCartStore } from '~/stores/cart'
 import { useAuthStore } from '~/stores/auth'
-import { useProductsStore } from '~/stores/products'
 import { useOrdersStore } from '~/stores/orders'
+import { useTaxSettingsStore } from '~/stores/taxSettings'
 import BaseInput from '~/components/common/BaseInput.vue'
 import BaseButton from '~/components/common/BaseButton.vue'
+import { formatToman } from '~/composables/useProductHelpers'
 
 useSeoMeta({ title: 'تکمیل خرید' })
 
 const cartStore = useCartStore()
 const authStore = useAuthStore()
-const productsStore = useProductsStore()
 const ordersStore = useOrdersStore()
+const taxSettingsStore = useTaxSettingsStore()
 
 const fullName = ref('')
 const phone = ref('')
 const address = ref('')
+const needsOfficialInvoice = ref(false)
+const buyerCompanyName = ref('')
+const buyerEconomicCode = ref('')
+const buyerNationalId = ref('')
 const submitting = ref(false)
 const successOrderNumber = ref('')
 const errorMsg = ref('')
+
+const vatRate = ref(9)
+onMounted(async () => {
+  await taxSettingsStore.fetchSettings()
+  vatRate.value = taxSettingsStore.settings.vat_rate ?? 9
+})
+
+// قیمت‌های سایت شامل مالیات فرض می‌شوند؛ مبلغ خالص و مالیات از دل مبلغ نهایی استخراج می‌شود
+const subtotal = computed(() => Math.round(cartStore.totalPrice / (1 + Number(vatRate.value) / 100)))
+const vatAmount = computed(() => cartStore.totalPrice - subtotal.value)
 
 async function submitOrder() {
   submitting.value = true
@@ -69,6 +106,13 @@ async function submitOrder() {
         address: address.value,
         items: cartStore.items,
         total_price: cartStore.totalPrice,
+        subtotal: subtotal.value,
+        vat_rate: vatRate.value,
+        vat_amount: vatAmount.value,
+        needs_official_invoice: needsOfficialInvoice.value,
+        buyer_company_name: needsOfficialInvoice.value ? buyerCompanyName.value : null,
+        buyer_economic_code: needsOfficialInvoice.value ? buyerEconomicCode.value : null,
+        buyer_national_id: needsOfficialInvoice.value ? buyerNationalId.value : null,
         status: 'pending'
       }
     ])
@@ -81,12 +125,14 @@ async function submitOrder() {
     return
   }
 
-  // یکپارچگی با انبار و حسابداری: کاهش موجودی هر کالا + ثبت گردش کالا (فروش) + ثبت درآمد فروش
+  // در این لحظه هنوز وجهی دریافت نشده (وضعیت سفارش = «در انتظار تایید پرداخت»)
+  // پس موجودی انبار کم نمی‌شود و سند حسابداری فروش صادر نمی‌شود؛ این کار زمانی انجام می‌شود که
+  // ادمین وضعیت سفارش را به «تایید سفارش» تغییر دهد (یعنی پرداخت واقعاً تایید شده باشد)
+  // فقط ردیف‌های نرمال‌شده سفارش (برای تفکیک فروشنده در پنل ادمین/تامین‌کننده) همین الان ثبت می‌شود
   try {
-    await productsStore.decreaseStockForOrder(cartStore.items, order.id)
     await ordersStore.createOrderItems(order.id, cartStore.items)
   } catch (e) {
-    // اگر ثبت گردش کالا با خطا مواجه شد، سفارش همچنان ثبت شده باقی می‌ماند
+    // اگر ثبت ردیف‌های سفارش با خطا مواجه شد، سفارش همچنان ثبت شده باقی می‌ماند
   }
 
   submitting.value = false

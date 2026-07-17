@@ -29,23 +29,26 @@
       <div class="mb-6 flex items-start justify-between border-b pb-4">
         <div>
           <h2 class="text-lg font-bold">فاکتور خرید</h2>
-          <p class="text-sm text-stone-500">شماره فاکتور: {{ invoice.invoice_number }}</p>
+          <p class="text-sm text-stone-500">شماره فاکتور: {{ invoice.official_invoice_number }} (داخلی: {{ invoice.invoice_number }})</p>
           <p class="text-sm text-stone-500">تاریخ: {{ toJalaliDate(invoice.created_at) }}</p>
         </div>
         <LinearBarcode :value="invoice.invoice_number" :height="45" />
       </div>
 
-      <div class="mb-6 grid grid-cols-2 gap-4 text-sm">
+      <div class="mb-6 grid grid-cols-2 gap-4 rounded-lg bg-stone-50 p-3 text-xs">
         <div>
-          <p class="font-medium text-stone-700">فروشنده:</p>
+          <p class="mb-1 font-bold text-stone-700">فروشنده (تامین‌کننده):</p>
           <p>{{ invoice.vendors?.name || '—' }}</p>
           <p v-if="invoice.vendors?.phone" class="text-stone-500">{{ invoice.vendors.phone }}</p>
         </div>
         <div>
-          <p class="font-medium text-stone-700">انبار مقصد:</p>
-          <p>{{ invoice.warehouses?.name || '—' }}</p>
+          <p class="mb-1 font-bold text-stone-700">خریدار:</p>
+          <p>{{ taxSettingsStore.settings.company_name || '—' }}</p>
+          <p>شماره اقتصادی: {{ taxSettingsStore.settings.economic_code || '—' }}</p>
+          <p>شناسه ملی: {{ taxSettingsStore.settings.national_id || '—' }}</p>
         </div>
       </div>
+      <p class="mb-4 text-xs text-stone-500">انبار مقصد: {{ invoice.warehouses?.name || '—' }}</p>
 
       <table class="w-full border-collapse text-sm">
         <thead>
@@ -73,7 +76,15 @@
       </table>
 
       <div class="mt-4 flex justify-end">
-        <div class="w-56 text-sm">
+        <div class="w-64 space-y-1 text-sm">
+          <div class="flex justify-between text-stone-600">
+            <span>مبلغ خالص</span>
+            <span>{{ formatRial(invoice.subtotal ?? invoice.total_amount) }} ریال</span>
+          </div>
+          <div class="flex justify-between text-stone-600">
+            <span>مالیات بر ارزش افزوده ({{ invoice.vat_rate ?? 0 }}٪)</span>
+            <span>{{ formatRial(invoice.vat_amount ?? 0) }} ریال</span>
+          </div>
           <div class="flex justify-between border-t pt-2 font-bold">
             <span>جمع کل</span>
             <span>{{ formatRial(invoice.total_amount) }} ریال</span>
@@ -91,6 +102,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { usePurchaseInvoicesStore } from '~/stores/purchaseInvoices'
+import { useTaxSettingsStore } from '~/stores/taxSettings'
 import BaseButton from '~/components/common/BaseButton.vue'
 import SkeletonBox from '~/components/common/SkeletonBox.vue'
 import LinearBarcode from '~/components/common/LinearBarcode.vue'
@@ -104,6 +116,7 @@ useSeoMeta({ title: 'مشاهده فاکتور خرید' })
 
 const route = useRoute()
 const purchaseInvoicesStore = usePurchaseInvoicesStore()
+const taxSettingsStore = useTaxSettingsStore()
 const { pageSize, printNow, downloadPdf } = usePrintInvoice()
 
 const invoice = ref(null)
@@ -112,5 +125,6 @@ const loading = ref(true)
 onMounted(async () => {
   invoice.value = await purchaseInvoicesStore.fetchInvoiceById(route.params.id)
   loading.value = false
+  await taxSettingsStore.fetchSettings()
 })
 </script>

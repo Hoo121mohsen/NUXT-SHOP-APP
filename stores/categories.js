@@ -35,11 +35,11 @@ export const useCategoriesStore = defineStore('categories', {
     },
 
     // ثبت دسته‌بندی جدید و بلافاصله افزودن به لیست محلی برای نمایش فوری
-    async createCategory({ title, image_url, glow_color }) {
+    async createCategory({ title, image_url, glow_color, default_tags }) {
       const supabase = useSupabase()
       const { data, error } = await supabase
         .from('categories')
-        .insert([{ title, image_url, glow_color: glow_color || null }])
+        .insert([{ title, image_url, glow_color: glow_color || null, default_tags: default_tags || [] }])
         .select()
         .single()
       if (error) throw error
@@ -47,12 +47,12 @@ export const useCategoriesStore = defineStore('categories', {
       return data
     },
 
-    // ویرایش دسته‌بندی موجود (عکس/رنگ نور/عنوان) - بدون حذف رکورد؛ محصولات زیرمجموعه دست‌نخورده باقی می‌مانند
-    async updateCategory(id, { title, image_url, glow_color }) {
+    // ویرایش دسته‌بندی موجود (عکس/رنگ حلقه/عنوان/تگ‌های پیش‌فرض) - بدون حذف رکورد؛ محصولات زیرمجموعه دست‌نخورده باقی می‌مانند
+    async updateCategory(id, { title, image_url, glow_color, default_tags }) {
       const supabase = useSupabase()
       const { data, error } = await supabase
         .from('categories')
-        .update({ title, image_url, glow_color: glow_color || null })
+        .update({ title, image_url, glow_color: glow_color || null, default_tags: default_tags || [] })
         .eq('id', id)
         .select()
         .single()

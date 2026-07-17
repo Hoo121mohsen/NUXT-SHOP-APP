@@ -96,8 +96,8 @@
                       <td class="px-3 py-2"><ProductNameHover :title="item.products?.title || '—'" :image="getCoverImage(item.products || {})" /></td>
                       <td class="px-3 py-2 text-stone-500">{{ item.product_colors?.color_name || '—' }}</td>
                       <td class="px-3 py-2">{{ item.quantity }}</td>
-                      <td class="px-3 py-2">{{ formatToman(item.unit_price) }}</td>
-                      <td class="px-3 py-2">{{ formatToman(item.line_total) }}</td>
+                      <td class="px-3 py-2">{{ formatRial(item.unit_price) }}</td>
+                      <td class="px-3 py-2">{{ formatRial(item.line_total) }}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -109,7 +109,7 @@
             <div v-else-if="details[e.id].kind === 'revenue_sale'" class="grid gap-1 text-xs text-stone-600 dark:text-stone-400">
               <p><span class="font-medium text-stone-800 dark:text-stone-200">محصول:</span> {{ e.products?.title || '—' }}</p>
               <p><span class="font-medium text-stone-800 dark:text-stone-200">تعداد:</span> {{ e.quantity }}</p>
-              <p><span class="font-medium text-stone-800 dark:text-stone-200">قیمت واحد:</span> {{ formatToman(e.unit_price) }} تومان</p>
+              <p><span class="font-medium text-stone-800 dark:text-stone-200">قیمت واحد:</span> {{ formatRial(e.unit_price) }} ریال</p>
               <p><span class="font-medium text-stone-800 dark:text-stone-200">فروشنده:</span> {{ e.vendors?.name || '—' }}</p>
               <p><span class="font-medium text-stone-800 dark:text-stone-200">مشتری:</span> {{ e.customer_name || details[e.id].order?.full_name || '—' }}</p>
               <p><span class="font-medium text-stone-800 dark:text-stone-200">شماره سفارش:</span> {{ details[e.id].order?.order_number || '—' }}</p>
@@ -120,7 +120,7 @@
             <div v-else class="grid gap-1 text-xs text-stone-600 dark:text-stone-400">
               <p><span class="font-medium text-stone-800 dark:text-stone-200">محصول:</span> {{ e.products?.title || '—' }}</p>
               <p><span class="font-medium text-stone-800 dark:text-stone-200">تعداد:</span> {{ e.quantity }}</p>
-              <p><span class="font-medium text-stone-800 dark:text-stone-200">قیمت خرید واحد:</span> {{ formatToman(e.unit_price) }} تومان</p>
+              <p><span class="font-medium text-stone-800 dark:text-stone-200">قیمت خرید واحد:</span> {{ formatRial(e.unit_price) }} ریال</p>
               <p><span class="font-medium text-stone-800 dark:text-stone-200">فروشنده:</span> {{ e.vendors?.name || '—' }}</p>
             </div>
           </template>
@@ -131,6 +131,43 @@
     </div>
 
     <Pagination :current-page="currentPage" :total-pages="totalPages" @prev="prev" @next="next" @go-to="goTo" />
+
+    <!-- پیش‌نمایش چاپ: تمام اسناد فیلترشده (نه فقط صفحه فعلی) به‌صورت یک جدول مسطح -->
+    <div class="mt-8">
+      <PrintableSection title="دفتر حسابداری" :subtitle="filterSubtitle" element-id="accounting-print-area" file-name="دفتر-حسابداری">
+        <table class="w-full border-collapse text-right text-xs">
+          <thead>
+            <tr class="border-b bg-stone-50 text-stone-600">
+              <th class="p-2">تاریخ</th>
+              <th class="p-2">نوع سند</th>
+              <th class="p-2">شرح / محصول</th>
+              <th class="p-2">تعداد</th>
+              <th class="p-2">فروشنده</th>
+              <th class="p-2">مشتری</th>
+              <th class="p-2">مبلغ (ریال)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="e in filtered" :key="e.id" class="border-b">
+              <td class="p-2">{{ toJalaliDate(e.created_at) }}</td>
+              <td class="p-2">{{ entryLabel(e.entry_type) }}</td>
+              <td class="p-2">{{ e.products?.title || e.description }}</td>
+              <td class="p-2">{{ e.quantity ?? '—' }}</td>
+              <td class="p-2">{{ e.vendors?.name || '—' }}</td>
+              <td class="p-2">{{ e.customer_name || '—' }}</td>
+              <td class="p-2">{{ formatRial(e.amount) }}</td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr class="border-t font-bold">
+              <td class="p-2" colspan="6">جمع کل</td>
+              <td class="p-2">{{ formatRial(filtered.reduce((s, e) => s + Number(e.amount || 0), 0)) }}</td>
+            </tr>
+          </tfoot>
+        </table>
+        <p v-if="!filtered.length" class="p-6 text-center text-stone-500">سندی برای نمایش وجود ندارد.</p>
+      </PrintableSection>
+    </div>
   </div>
 </template>
 
@@ -142,8 +179,10 @@ import SkeletonTable from '~/components/common/SkeletonTable.vue'
 import SkeletonBox from '~/components/common/SkeletonBox.vue'
 import Pagination from '~/components/common/Pagination.vue'
 import JalaliDateRangeFilter from '~/components/common/JalaliDateRangeFilter.vue'
+import PrintableSection from '~/components/dashboard/PrintableSection.vue'
 import ProductNameHover from '~/components/common/ProductNameHover.vue'
-import { getCoverImage, formatRial, formatToman } from '~/composables/useProductHelpers'
+import PrintableSection from '~/components/dashboard/PrintableSection.vue'
+import { getCoverImage, formatRial } from '~/composables/useProductHelpers'
 import { toJalaliDate } from '~/composables/useJalaliDate'
 import { usePagination } from '~/composables/usePagination'
 
@@ -212,4 +251,20 @@ function entryStyle(type) {
   if (type === 'revenue_sale') return 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
   return 'bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-300'
 }
+
+// عنوان استاندارد گزارش شامل فیلترهای اعمال‌شده (برای درج در بالای نسخه چاپی)
+const filterSubtitle = computed(() => {
+  const parts = []
+  if (typeFilter.value !== 'all') parts.push(`نوع سند: ${entryLabel(typeFilter.value)}`)
+  if (vendorFilter.value !== 'all') {
+    const v = vendorsStore.vendors.find((vv) => vv.id === vendorFilter.value)
+    parts.push(`فروشنده: ${v?.name || ''}`)
+  }
+  if (customerSearch.value.trim()) parts.push(`مشتری: «${customerSearch.value.trim()}»`)
+  if (productSearch.value.trim()) parts.push(`محصول: «${productSearch.value.trim()}»`)
+  if (dateRange.value.from || dateRange.value.to) {
+    parts.push(`بازه تاریخ: ${toJalaliDate(dateRange.value.from) || '...'} تا ${toJalaliDate(dateRange.value.to) || '...'}`)
+  }
+  return parts.length ? parts.join(' | ') : 'همه اسناد (بدون فیلتر)'
+})
 </script>

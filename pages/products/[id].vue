@@ -48,6 +48,23 @@
           {{ inStock ? `موجود (${product.stock_quantity} عدد)` : 'ناموجود' }}
         </span>
 
+        <!-- زنگوله اطلاع‌رسانی موجود شدن مجدد (فقط برای محصولات ناموجود و کاربر لاگین‌کرده) -->
+        <div v-if="!product.is_affiliate && !inStock" class="mt-2">
+          <button
+            v-if="authStore.user"
+            type="button"
+            class="flex items-center gap-1.5 text-sm text-amber-600 hover:underline dark:text-amber-400"
+            :disabled="notifyRequested"
+            @click="handleRequestNotify"
+          >
+            <i class="fa-solid fa-bell"></i>
+            {{ notifyRequested ? 'به شما اطلاع داده خواهد شد' : 'اطلاع بده موجود شد' }}
+          </button>
+          <NuxtLink v-else to="/login" class="flex items-center gap-1.5 text-sm text-amber-600 hover:underline dark:text-amber-400">
+            <i class="fa-solid fa-bell"></i> برای اطلاع از موجود شدن، وارد شوید
+          </NuxtLink>
+        </div>
+
         <!-- تعداد (فقط محصولات بدون رنگ‌بندی) -->
         <div v-if="!product.is_affiliate && !colors.length" class="mt-4 flex items-center gap-2">
           <label class="text-sm font-medium text-stone-700 dark:text-stone-300">تعداد:</label>
@@ -100,6 +117,8 @@
 
     <p v-else class="text-stone-500">محصول مورد نظر یافت نشد.</p>
 
+    <ProductComments v-if="product" :product-id="product.id" />
+
     <RelatedProducts v-if="product" :exclude-id="product.id" />
 
     <!-- popup انتخاب چندگانه رنگ + تعداد (در موبایل از پایین صفحه بالا می‌آید) - با دکمه «ثبت سفارش» باز می‌شود -->
@@ -116,8 +135,10 @@ import { useWishlistStore } from '~/stores/wishlist'
 import { useProductsStore } from '~/stores/products'
 import { useAuthStore } from '~/stores/auth'
 import { useAnalyticsStore } from '~/stores/analytics'
+import { useNotificationsStore } from '~/stores/notifications'
 import ProductGallery from '~/components/product/ProductGallery.vue'
 import RelatedProducts from '~/components/product/RelatedProducts.vue'
+import ProductComments from '~/components/product/ProductComments.vue'
 import ResponsiveSheet from '~/components/common/ResponsiveSheet.vue'
 import ColorQuantityPicker from '~/components/product/ColorQuantityPicker.vue'
 import BaseButton from '~/components/common/BaseButton.vue'
@@ -130,6 +151,7 @@ const wishlistStore = useWishlistStore()
 const productsStore = useProductsStore()
 const authStore = useAuthStore()
 const analyticsStore = useAnalyticsStore()
+const notificationsStore = useNotificationsStore()
 
 // useAsyncData باعث می‌شود اطلاعات محصول در سمت سرور رندر شود (مهم برای سئو)
 const { data: product, pending } = await useAsyncData(`product-${route.params.id}`, () =>
@@ -137,26 +159,49 @@ const { data: product, pending } = await useAsyncData(`product-${route.params.id
 )
 
 const images = computed(() => (product.value ? getSortedImages(product.value) : []))
-const colors = computed(() => (product.value ? getSortedColors(product.value) : []))
+const rawColors = computed(() => (product.value ? getSortedColors(product.value) : []))
 const finalPrice = computed(() => (product.value ? getFinalPrice(product.value) : 0))
 const inStock = computed(() => (product.value ? isInStock(product.value) : false))
 
 const selectedQty = ref(1)
 const addToCartError = ref('')
 const colorSheetOpen = ref(false)
+const availableStock = ref(null) // { available, colorAvailability } - موجودی واقعی در دسترسِ این کاربر
 
-const maxSelectableQty = computed(() => product.value?.stock_quantity || 1)
+// موجودی هر رنگ = موجودی در دسترس (رزروشده توسط سایر کاربران کسر شده) منهای مقداری که خودِ این کاربر از قبل در سبدش دارد
+const colors = computed(() =>
+  rawColors.value.map((c) => {
+    const availableForAll = availableStock.value?.colorAvailability?.[c.id] ?? c.quantity
+    const alreadyInMyCart = cartStore.items
+      .filter((i) => i.id === product.value?.id && i.color_id === c.id)
+      .reduce((sum, i) => sum + i.quantity, 0)
+    return { ...c, quantity: Math.max(0, availableForAll - alreadyInMyCart) }
+  })
+)
+
+const maxSelectableQty = computed(() => {
+  if (!product.value) return 1
+  const availableForAll = availableStock.value?.available ?? product.value.stock_quantity
+  const alreadyInMyCart = cartStore.items
+    .filter((i) => i.id === product.value.id && !i.color_id)
+    .reduce((sum, i) => sum + i.quantity, 0)
+  return Math.max(1, availableForAll - alreadyInMyCart)
+})
 
 const todayViews = ref(0)
+const notifyRequested = ref(false)
 
 // ثبت بازدید این صفحه (همراه با شناسه محصول - برای گزارش «پربازدیدترین محصولات»)
 // و در صورتی که کاربر ادمین (لاگین‌کرده) باشد، آمار بازدید امروز را می‌خوانیم
 if (import.meta.client && product.value) {
   analyticsStore.logPageView(route.fullPath, product.value.id)
-  authStore.fetchUser().then(async () => {
-    if (authStore.user) {
+  authStore.fetchUser().then(async (user) => {
+    if (user) {
       todayViews.value = await analyticsStore.fetchTodayProductViews(product.value.id)
+      notifyRequested.value = await notificationsStore.hasRequestedStockNotification(user.id, product.value.id)
     }
+    // موجودی واقعی در دسترس (با احتساب رزرو سفارش‌های در انتظار پرداخت سایر کاربران) را همیشه محاسبه می‌کنیم
+    availableStock.value = await productsStore.fetchAvailableStock(product.value.id, user?.id || null)
   })
 }
 
@@ -186,5 +231,11 @@ function handleColorRowsConfirmed(rows) {
     )
   }
   colorSheetOpen.value = false
+}
+
+async function handleRequestNotify() {
+  if (!authStore.user) return
+  await notificationsStore.requestStockNotification(authStore.user.id, product.value.id)
+  notifyRequested.value = true
 }
 </script>

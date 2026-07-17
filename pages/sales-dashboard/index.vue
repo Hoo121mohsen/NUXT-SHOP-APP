@@ -2,7 +2,11 @@
   <div class="mx-auto max-w-6xl px-4 py-8">
     <div class="mb-6 flex items-center justify-between">
       <h1 class="text-2xl font-bold text-stone-800 dark:text-stone-100">داشبورد مدیر فروش</h1>
-      <button class="text-sm text-stone-500 hover:text-red-600" @click="handleLogout">خروج</button>
+      <div class="flex items-center gap-4">
+        <NuxtLink to="/dashboard/comments" class="text-sm text-stone-600 hover:text-brand-600 dark:text-stone-300">💬 نظرات محصولات</NuxtLink>
+        <NuxtLink to="/dashboard/tickets" class="text-sm text-stone-600 hover:text-brand-600 dark:text-stone-300">🎫 پیام‌های پشتیبانی</NuxtLink>
+        <button class="text-sm text-stone-500 hover:text-red-600" @click="handleLogout">خروج</button>
+      </div>
     </div>
 
     <!-- نوار جستجو -->

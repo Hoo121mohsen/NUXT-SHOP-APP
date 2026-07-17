@@ -4,7 +4,7 @@
       <h1 class="text-2xl font-bold text-stone-800 dark:text-stone-100">فاکتور فروش</h1>
       <div class="flex items-center gap-2">
         <select v-model="pageSize" class="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm dark:border-stone-600 dark:bg-stone-800 dark:text-stone-100">
-          <option  value="A4">اندازه چاپ: A4</option>
+          <option value="A4">اندازه چاپ: A4</option>
           <option value="A5">اندازه چاپ: A5</option>
         </select>
         <BaseButton variant="secondary" @click="printNow">🖨 چاپ</BaseButton>
@@ -27,7 +27,8 @@
     >
       <div class="mb-6 flex items-start justify-between border-b pb-4">
         <div>
-          <h2 class="text-lg font-bold">فاکتور فروش</h2>
+          <h2 class="text-lg font-bold">فاکتور فروش رسمی</h2>
+          <p class="text-sm text-stone-500">شماره فاکتور: {{ order.official_invoice_number }}</p>
           <p class="text-sm text-stone-500">کد سفارش: {{ order.order_number || order.id.slice(0, 8) }}</p>
           <p class="text-sm text-stone-500">تاریخ: {{ toJalaliDate(order.created_at) }}</p>
           <p class="mt-1 inline-block rounded-md px-2 py-0.5 text-xs font-medium" :class="orderStatusColor(order.status)">
@@ -37,10 +38,25 @@
         <LinearBarcode :value="order.order_number || order.id" :height="45" />
       </div>
 
-      <div class="mb-6 text-sm">
-        <p class="font-medium text-stone-700">مشتری:</p>
-        <p>{{ order.full_name }} — {{ order.phone }}</p>
-        <p class="text-stone-500">{{ order.address }}</p>
+      <!-- اطلاعات حقوقی فروشنده و خریدار (الزامی برای بازرسان دارایی) -->
+      <div class="mb-6 grid grid-cols-2 gap-4 rounded-lg bg-stone-50 p-3 text-xs">
+        <div>
+          <p class="mb-1 font-bold text-stone-700">فروشنده:</p>
+          <p>{{ taxSettingsStore.settings.company_name || '—' }}</p>
+          <p>شماره اقتصادی: {{ taxSettingsStore.settings.economic_code || '—' }}</p>
+          <p>شناسه ملی: {{ taxSettingsStore.settings.national_id || '—' }}</p>
+          <p>{{ taxSettingsStore.settings.address || '' }}</p>
+        </div>
+        <div>
+          <p class="mb-1 font-bold text-stone-700">خریدار:</p>
+          <p>{{ order.buyer_company_name || order.full_name }}</p>
+          <p>{{ order.phone }}</p>
+          <template v-if="order.needs_official_invoice">
+            <p>شماره اقتصادی: {{ order.buyer_economic_code || '—' }}</p>
+            <p>شناسه ملی: {{ order.buyer_national_id || '—' }}</p>
+          </template>
+          <p>{{ order.address }}</p>
+        </div>
       </div>
 
       <table class="w-full border-collapse text-sm">
@@ -64,10 +80,19 @@
         </tbody>
       </table>
 
+      <!-- تفکیک مالیاتی استاندارد: مبلغ خالص + مالیات بر ارزش افزوده -->
       <div class="mt-4 flex justify-end">
-        <div class="w-56 text-sm">
+        <div class="w-64 space-y-1 text-sm">
+          <div class="flex justify-between text-stone-600">
+            <span>مبلغ خالص</span>
+            <span>{{ formatRial(order.subtotal ?? order.total_price) }} ریال</span>
+          </div>
+          <div class="flex justify-between text-stone-600">
+            <span>مالیات بر ارزش افزوده ({{ order.vat_rate ?? 0 }}٪)</span>
+            <span>{{ formatRial(order.vat_amount ?? 0) }} ریال</span>
+          </div>
           <div class="flex justify-between border-t pt-2 font-bold">
-            <span>مبلغ نهایی</span>
+            <span>مبلغ نهایی قابل پرداخت</span>
             <span>{{ formatRial(order.total_price) }} ریال</span>
           </div>
         </div>
@@ -88,12 +113,14 @@ import { formatRial } from '~/composables/useProductHelpers'
 import { toJalaliDate } from '~/composables/useJalaliDate'
 import { usePrintInvoice } from '~/composables/usePrintInvoice'
 import { orderStatusLabel, orderStatusColor } from '~/stores/orders'
+import { useTaxSettingsStore } from '~/stores/taxSettings'
 
 definePageMeta({ layout: 'dashboard' })
 useSeoMeta({ title: 'فاکتور فروش' })
 
 const route = useRoute()
 const { pageSize, printNow, downloadPdf } = usePrintInvoice()
+const taxSettingsStore = useTaxSettingsStore()
 
 const order = ref(null)
 const loading = ref(true)
@@ -103,5 +130,6 @@ onMounted(async () => {
   const { data } = await supabase.from('orders').select('*').eq('id', route.params.id).single()
   order.value = data
   loading.value = false
+  await taxSettingsStore.fetchSettings()
 })
 </script>

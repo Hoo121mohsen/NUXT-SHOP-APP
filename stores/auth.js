@@ -73,6 +73,32 @@ export const useAuthStore = defineStore('auth', {
       await supabase.auth.signOut()
       this.user = null
       this.profile = null
+    },
+
+    // به‌روزرسانی نام نمایشی/آواتار پروفایل کاربر جاری
+    async updateProfile({ display_name, avatar_url }) {
+      if (!this.user) return
+      const supabase = useSupabase()
+      const { data, error } = await supabase
+        .from('profiles')
+        .update({ display_name, avatar_url })
+        .eq('id', this.user.id)
+        .select()
+        .single()
+      if (error) throw error
+      this.profile = data
+      return data
+    },
+
+    // آپلود عکس آواتار در باکت user-media
+    async uploadAvatar(file) {
+      const supabase = useSupabase()
+      const ext = file.name.split('.').pop()
+      const path = `avatars/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+      const { error } = await supabase.storage.from('user-media').upload(path, file)
+      if (error) throw error
+      const { data } = supabase.storage.from('user-media').getPublicUrl(path)
+      return data.publicUrl
     }
   }
 })

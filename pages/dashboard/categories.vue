@@ -11,9 +11,14 @@
         {{ editingId ? 'ویرایش دسته‌بندی' : 'افزودن دسته‌بندی جدید' }}
       </h2>
 
-      <SingleImageUploader v-model="form.image_url" label="عکس دسته‌بندی (برای نور مخفی، PNG با زمینه شفاف پیشنهاد می‌شود)" :upload-fn="categoriesStore.uploadCategoryImage" />
+      <SingleImageUploader v-model="form.image_url" label="عکس دسته‌بندی (PNG با زمینه شفاف پیشنهاد می‌شود)" :upload-fn="categoriesStore.uploadCategoryImage" />
       <BaseInput v-model="form.title" label="عنوان دسته‌بندی" required />
       <GlowColorPicker v-model="form.glow_color" />
+
+      <TagsInput v-model="form.default_tags" label="تگ‌های پیش‌فرض این دسته‌بندی" />
+      <p class="-mt-3 text-xs text-stone-400">
+        این تگ‌ها موقع تعریف محصول جدید، وقتی این دسته‌بندی انتخاب شود، به‌عنوان پیشنهاد سریع نمایش داده می‌شوند.
+      </p>
 
       <!-- پیش‌نمایش زنده -->
       <div v-if="form.image_url" class="flex items-center gap-3 rounded-lg bg-stone-50 p-3 dark:bg-stone-900/40">
@@ -43,10 +48,21 @@
         <CategoryCircle :category="c" />
         <div class="flex gap-2">
           <button class="text-[10px] text-brand-600 hover:underline" @click="startEdit(c)">ویرایش</button>
-          <button class="text-[10px] text-red-500 hover:underline" @click="handleDelete(c.id)">حذف</button>
+          <button class="text-[10px] text-red-500 hover:underline" @click="confirmDelete(c)">حذف</button>
         </div>
       </div>
     </div>
+
+    <!-- مودال تایید حذف -->
+    <BaseModal v-model="showConfirm" title="حذف دسته‌بندی">
+      <p class="text-sm text-stone-600 dark:text-stone-300">
+        آیا از حذف دسته‌بندی «{{ toDelete?.title }}» مطمئن هستید؟ محصولات این دسته حذف نمی‌شوند، فقط دیگر دسته‌بندی مشخصی نخواهند داشت.
+      </p>
+      <div class="mt-4 flex justify-end gap-2">
+        <BaseButton variant="secondary" @click="showConfirm = false">انصراف</BaseButton>
+        <BaseButton variant="danger" :loading="deleting" @click="handleDelete">حذف دسته‌بندی</BaseButton>
+      </div>
+    </BaseModal>
   </div>
 </template>
 
@@ -56,7 +72,9 @@ import { useCategoriesStore } from '~/stores/categories'
 import SingleImageUploader from '~/components/common/SingleImageUploader.vue'
 import BaseInput from '~/components/common/BaseInput.vue'
 import BaseButton from '~/components/common/BaseButton.vue'
+import BaseModal from '~/components/common/BaseModal.vue'
 import GlowColorPicker from '~/components/common/GlowColorPicker.vue'
+import TagsInput from '~/components/common/TagsInput.vue'
 import CategoryCircle from '~/components/category/CategoryCircle.vue'
 
 definePageMeta({ layout: 'dashboard' })
@@ -65,12 +83,16 @@ useSeoMeta({ title: 'مدیریت دسته‌بندی‌ها' })
 const categoriesStore = useCategoriesStore()
 
 function emptyForm() {
-  return { title: '', image_url: '', glow_color: '' }
+  return { title: '', image_url: '', glow_color: '', default_tags: [] }
 }
 const form = reactive(emptyForm())
 const editingId = ref(null)
 const saving = ref(false)
 const errorMsg = ref('')
+
+const showConfirm = ref(false)
+const toDelete = ref(null)
+const deleting = ref(false)
 
 onMounted(() => {
   categoriesStore.fetchCategories()
@@ -82,6 +104,7 @@ function startEdit(category) {
   form.title = category.title
   form.image_url = category.image_url || ''
   form.glow_color = category.glow_color || ''
+  form.default_tags = category.default_tags || []
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
@@ -99,20 +122,18 @@ async function handleSubmit() {
   }
   saving.value = true
   try {
+    const payload = {
+      title: form.title,
+      image_url: form.image_url,
+      glow_color: form.glow_color,
+      default_tags: form.default_tags
+    }
     if (editingId.value) {
-      await categoriesStore.updateCategory(editingId.value, {
-        title: form.title,
-        image_url: form.image_url,
-        glow_color: form.glow_color
-      })
+      await categoriesStore.updateCategory(editingId.value, payload)
     } else {
       // بعد از ذخیره در دیتابیس، استور خودش آیتم جدید را به لیست اضافه می‌کند
       // و همین‌جا (بدون رفرش صفحه) نمایش داده می‌شود
-      await categoriesStore.createCategory({
-        title: form.title,
-        image_url: form.image_url,
-        glow_color: form.glow_color
-      })
+      await categoriesStore.createCategory(payload)
     }
     resetForm()
   } catch (e) {
@@ -122,8 +143,19 @@ async function handleSubmit() {
   }
 }
 
-async function handleDelete(id) {
-  if (editingId.value === id) resetForm()
-  await categoriesStore.deleteCategory(id)
+function confirmDelete(category) {
+  toDelete.value = category
+  showConfirm.value = true
+}
+
+async function handleDelete() {
+  deleting.value = true
+  try {
+    if (editingId.value === toDelete.value.id) resetForm()
+    await categoriesStore.deleteCategory(toDelete.value.id)
+    showConfirm.value = false
+  } finally {
+    deleting.value = false
+  }
 }
 </script>

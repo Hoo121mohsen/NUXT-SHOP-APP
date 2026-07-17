@@ -50,9 +50,24 @@
 
       <button type="button" class="text-sm text-brand-600 hover:underline dark:text-brand-400" @click="addRow">+ افزودن ردیف</button>
 
-      <div class="flex justify-between border-t border-stone-200 pt-4 font-bold text-stone-800 dark:border-stone-700 dark:text-stone-100">
-        <span>جمع کل فاکتور (بدهی)</span>
-        <span>{{ formatToman(totalAmount) }} تومان</span>
+      <div class="flex items-center gap-2">
+        <label class="text-sm text-stone-600 dark:text-stone-400">نرخ مالیات بر ارزش افزوده (٪):</label>
+        <input v-model.number="vatRate" type="number" step="0.5" min="0" class="w-20 rounded-lg border border-stone-300 bg-white px-2 py-1 text-sm dark:border-stone-600 dark:bg-stone-900 dark:text-stone-100" />
+      </div>
+
+      <div class="space-y-1 border-t border-stone-200 pt-4 text-sm dark:border-stone-700">
+        <div class="flex justify-between text-stone-600 dark:text-stone-400">
+          <span>مبلغ خالص</span>
+          <span>{{ formatToman(subtotal) }} تومان</span>
+        </div>
+        <div class="flex justify-between text-stone-600 dark:text-stone-400">
+          <span>مالیات بر ارزش افزوده ({{ vatRate }}٪)</span>
+          <span>{{ formatToman(vatAmount) }} تومان</span>
+        </div>
+        <div class="flex justify-between font-bold text-stone-800 dark:text-stone-100">
+          <span>جمع کل فاکتور (بدهی)</span>
+          <span>{{ formatToman(subtotal + vatAmount) }} تومان</span>
+        </div>
       </div>
 
       <p v-if="errorMsg" class="text-sm text-red-600">{{ errorMsg }}</p>
@@ -141,6 +156,7 @@ import { useOrdersStore } from '~/stores/orders'
 import { useVendorsStore } from '~/stores/vendors'
 import { useWarehousesStore } from '~/stores/warehouses'
 import { useProductsStore } from '~/stores/products'
+import { useTaxSettingsStore } from '~/stores/taxSettings'
 import BaseInput from '~/components/common/BaseInput.vue'
 import BaseButton from '~/components/common/BaseButton.vue'
 import SkeletonTable from '~/components/common/SkeletonTable.vue'
@@ -158,11 +174,13 @@ const ordersStore = useOrdersStore()
 const vendorsStore = useVendorsStore()
 const warehousesStore = useWarehousesStore()
 const productsStore = useProductsStore()
+const taxSettingsStore = useTaxSettingsStore()
 
 const showForm = ref(false)
 const saving = ref(false)
 const errorMsg = ref('')
 const loadingAll = ref(true)
+const vatRate = ref(9)
 
 function emptyRow() {
   return { product_id: '', color_id: '', quantity: 1, unit_price: '', priceMode: 'current', new_sale_price: '' }
@@ -177,9 +195,10 @@ function emptyForm() {
 }
 const form = reactive(emptyForm())
 
-const totalAmount = computed(() =>
+const subtotal = computed(() =>
   form.items.reduce((sum, i) => sum + (Number(i.quantity) || 0) * (Number(i.unit_price) || 0), 0)
 )
+const vatAmount = computed(() => Math.round((subtotal.value * Number(vatRate.value || 0)) / 100))
 
 onMounted(async () => {
   await Promise.all([
@@ -187,8 +206,10 @@ onMounted(async () => {
     ordersStore.fetchOrders(),
     vendorsStore.fetchVendors(),
     warehousesStore.fetchWarehouses(),
-    productsStore.fetchProducts()
+    productsStore.fetchProducts(),
+    taxSettingsStore.fetchSettings()
   ])
+  vatRate.value = taxSettingsStore.settings.vat_rate ?? 9
   loadingAll.value = false
 })
 
@@ -221,7 +242,8 @@ async function handleSubmit() {
       invoice_number: form.invoice_number,
       vendor_id: form.vendor_id || null,
       warehouse_id: form.warehouse_id || null,
-      items
+      items,
+      vatRate: vatRate.value
     })
     Object.assign(form, emptyForm())
     showForm.value = false

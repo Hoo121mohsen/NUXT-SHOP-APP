@@ -41,12 +41,14 @@
           </span>
         </NuxtLink>
 
-        <NuxtLink v-if="!authStore.user" to="/login" class="hidden text-sm text-stone-600 hover:text-brand-600 md:inline dark:text-stone-300">
+        <NotificationBell v-if="authStore.user" class="hidden md:block" />
+
+        <NuxtLink v-if="authStore.user" to="/profile" class="hidden text-xl text-stone-600 hover:text-brand-600 md:inline dark:text-stone-300" title="پروفایل من">
+          <i class="fa-solid fa-circle-user"></i>
+        </NuxtLink>
+        <NuxtLink v-else to="/login" class="hidden text-sm text-stone-600 hover:text-brand-600 md:inline dark:text-stone-300">
           ورود
         </NuxtLink>
-        <button v-else class="hidden text-sm text-stone-600 hover:text-brand-600 md:inline dark:text-stone-300" @click="handleLogout">
-          خروج
-        </button>
       </div>
     </div>
 
@@ -69,6 +71,9 @@
       <NuxtLink v-if="authStore.isSalesManager" to="/sales-dashboard" class="rounded-lg px-2 py-2 text-sm text-stone-700 hover:bg-stone-50 dark:text-stone-200" @click="mobileOpen = false">داشبورد فروش</NuxtLink>
       <NuxtLink v-if="authStore.isSupplier" to="/supplier-dashboard" class="rounded-lg px-2 py-2 text-sm text-stone-700 hover:bg-stone-50 dark:text-stone-200" @click="mobileOpen = false">داشبورد تامین‌کننده</NuxtLink>
       <NuxtLink to="/cart" class="rounded-lg px-2 py-2 text-sm text-stone-700 hover:bg-stone-50 dark:text-stone-200" @click="mobileOpen = false">سبد خرید</NuxtLink>
+      <NuxtLink v-if="authStore.user" to="/profile" class="rounded-lg px-2 py-2 text-sm text-stone-700 hover:bg-stone-50 dark:text-stone-200" @click="mobileOpen = false">
+        <i class="fa-solid fa-circle-user"></i> پروفایل من
+      </NuxtLink>
       <NuxtLink v-if="!authStore.user" to="/login" class="rounded-lg px-2 py-2 text-sm text-stone-700 hover:bg-stone-50 dark:text-stone-200" @click="mobileOpen = false">ورود</NuxtLink>
       <button v-else class="rounded-lg px-2 py-2 text-right text-sm text-stone-700 hover:bg-stone-50 dark:text-stone-200" @click="handleLogout">خروج</button>
     </div>
@@ -80,6 +85,7 @@ import { ref } from 'vue'
 import { useCartStore } from '~/stores/cart'
 import { useAuthStore } from '~/stores/auth'
 import DarkModeToggle from '../common/DarkModeToggle.vue'
+import NotificationBell from './NotificationBell.vue'
 
 const cartStore = useCartStore()
 const authStore = useAuthStore()

@@ -1,8 +1,9 @@
 import { defineStore } from 'pinia'
+import { useJournalStore } from './journal'
 
 // استور اصلی محصولات
 // جداول مرتبط: products, product_images, product_colors, categories, vendors, warehouses
-// + یکپارچه با انبار/حسابداری: تعریف محصول با موجودی اولیه = دارایی اولیه + گردش کالا
+// + یکپارچه با انبار/حسابداری دوبل: تعریف محصول با موجودی اولیه، فروش، و مرجوعی همگی سند حسابداری واقعی می‌سازند
 export const useProductsStore = defineStore('products', {
   state: () => ({
     products: [],
@@ -89,6 +90,7 @@ export const useProductsStore = defineStore('products', {
     // موجودی کل محصول از جمع تعداد رنگ‌ها محاسبه می‌شود (منبع واحد حقیقت برای انبار/حسابداری)
     async createProduct(payload) {
       const supabase = useSupabase()
+      const journalStore = useJournalStore()
       const { images, colors, tags, ...productFields } = payload
 
       const computedStock = colors?.length
@@ -132,6 +134,8 @@ export const useProductsStore = defineStore('products', {
 
       // یکپارچگی با انبار و حسابداری: فقط برای محصولات معمولی (غیر Affiliate) با موجودی اولیه
       if (!productFields.is_affiliate && computedStock > 0) {
+        const amount = Number(productFields.purchase_price || 0) * computedStock
+
         await supabase.from('inventory_movements').insert([{
           product_id: product.id,
           warehouse_id: productFields.warehouse_id || null,
@@ -141,9 +145,10 @@ export const useProductsStore = defineStore('products', {
           reference_id: product.id
         }])
 
+        // سند ساده (برای صفحه خلاصه حسابداری قدیمی)
         await supabase.from('accounting_entries').insert([{
           entry_type: 'asset_initial',
-          amount: Number(productFields.purchase_price || 0) * computedStock,
+          amount,
           description: `دارایی اولیه - تعریف محصول «${productFields.title}»`,
           product_id: product.id,
           quantity: computedStock,
@@ -152,6 +157,19 @@ export const useProductsStore = defineStore('products', {
           reference_type: 'product',
           reference_id: product.id
         }])
+
+        // سند حسابداری دوبل واقعی: بدهکار موجودی کالا / بستانکار سرمایه (دارایی اولیه)
+        if (amount > 0) {
+          await journalStore.postEntry({
+            description: `دارایی اولیه - تعریف محصول «${productFields.title}»`,
+            source_type: 'asset_initial',
+            source_id: product.id,
+            lines: [
+              { account_code: '1040', debit: amount, credit: 0 },
+              { account_code: '3010', debit: 0, credit: amount }
+            ]
+          })
+        }
       }
 
       return this.fetchProductById(product.id)
@@ -228,52 +246,85 @@ export const useProductsStore = defineStore('products', {
       if (error) throw error
     },
 
-    // کاهش موجودی هنگام ثبت سفارش مشتری + ثبت گردش کالا (فروش) - از صفحه checkout صدا زده می‌شود
-    async decreaseStockForOrder(items, orderId) {
+    // محاسبه موجودی «در دسترس» یک محصول برای کاربر جاری:
+    // موجودی واقعی منهای مقداری که در سفارش‌های «در انتظار تایید پرداخت» سایر کاربران رزرو شده است
+    // (سفارش خود کاربر جاری از این کسر مستثنی می‌شود، چون او خودش قبلاً آن مقدار را «برای خودش» می‌بیند)
+    async fetchAvailableStock(productId, currentUserId = null) {
       const supabase = useSupabase()
 
-      // نام مشتری این سفارش را یک‌بار می‌خوانیم تا روی هر سند درآمد فروش ثبت شود (برای فیلتر بر اساس نام مشتری)
-      const { data: orderRow } = await supabase.from('orders').select('full_name').eq('id', orderId).single()
-      const customerName = orderRow?.full_name || null
+      const { data: product } = await supabase
+        .from('products')
+        .select('stock_quantity, product_colors(id, quantity)')
+        .eq('id', productId)
+        .single()
+      if (!product) return null
 
-      for (const item of items) {
+      let pendingQuery = supabase
+        .from('order_items')
+        .select('quantity, color_id, orders!inner(status, user_id)')
+        .eq('product_id', productId)
+        .eq('orders.status', 'pending')
+
+      const { data: pendingItems } = await pendingQuery
+
+      const reservedByOthers = (pendingItems || []).filter((i) => i.orders.user_id !== currentUserId)
+
+      const totalReserved = reservedByOthers.reduce((sum, i) => sum + Number(i.quantity), 0)
+      const reservedByColor = {}
+      reservedByOthers.forEach((i) => {
+        if (i.color_id) reservedByColor[i.color_id] = (reservedByColor[i.color_id] || 0) + Number(i.quantity)
+      })
+
+      const colorAvailability = {}
+      for (const c of product.product_colors || []) {
+        colorAvailability[c.id] = Math.max(0, Number(c.quantity) - (reservedByColor[c.id] || 0))
+      }
+
+      return {
+        available: Math.max(0, Number(product.stock_quantity) - totalReserved),
+        colorAvailability
+      }
+    },
+
+    // تایید نهایی سفارش (وقتی پرداخت تایید می‌شود): کاهش اتمیک موجودی از طریق تابع دیتابیس confirm_order_stock
+    // (این تابع جلوی اضافه‌فروش در خرید همزمان چند مشتری از آخرین موجودی را می‌گیرد)
+    // سپس فقط برای ردیف‌هایی که موجودی کافی داشتند سند حسابداری (فروش+مالیات+بهای تمام‌شده) صادر می‌شود؛
+    // برای ردیف‌های کم‌موجودی، به مشتری اعلان داده می‌شود که سبد خریدش نیاز به اصلاح دارد
+    async processOrderConfirmation(order) {
+      const supabase = useSupabase()
+      const journalStore = useJournalStore()
+
+      const alreadyProcessed = await journalStore.hasEntryForSource('sale', order.id)
+      if (alreadyProcessed) return { hasShortage: false }
+
+      const { data: rpcResult, error: rpcError } = await supabase.rpc('confirm_order_stock', { p_order_id: order.id })
+      if (rpcError) throw rpcError
+
+      const shortages = rpcResult?.shortages || []
+      const shortageProductIds = new Set(shortages.map((s) => s.product_id))
+
+      const customerName = order.full_name || null
+      const vatRate = Number(order.vat_rate || 0)
+
+      for (const item of order.items || []) {
+        if (shortageProductIds.has(item.id)) continue // کم‌موجودی بود؛ برای این ردیف سندی صادر نمی‌شود
+
         const { data: product } = await supabase
           .from('products')
-          .select('stock_quantity, warehouse_id, vendor_id')
+          .select('vendor_id, purchase_price')
           .eq('id', item.id)
           .single()
-
         if (!product) continue
 
-        const newQty = Math.max(0, Number(product.stock_quantity || 0) - Number(item.quantity))
-        await supabase.from('products').update({ stock_quantity: newQty }).eq('id', item.id)
+        const lineTotal = Number(item.price) * Number(item.quantity)
+        const netAmount = Math.round(lineTotal / (1 + vatRate / 100))
+        const vatAmount = lineTotal - netAmount
+        const cogsAmount = Number(product.purchase_price || 0) * Number(item.quantity)
 
-        // کاهش موجودی همان تنوع رنگ انتخاب‌شده توسط کاربر (هویت با نام رنگ - color_id مرجع دقیق است)
-        if (item.color_id) {
-          const { data: colorRow } = await supabase
-            .from('product_colors')
-            .select('quantity')
-            .eq('id', item.color_id)
-            .single()
-          if (colorRow) {
-            const newColorQty = Math.max(0, Number(colorRow.quantity || 0) - Number(item.quantity))
-            await supabase.from('product_colors').update({ quantity: newColorQty }).eq('id', item.color_id)
-          }
-        }
-
-        await supabase.from('inventory_movements').insert([{
-          product_id: item.id,
-          color_id: item.color_id || null,
-          warehouse_id: product.warehouse_id || null,
-          change_qty: -Number(item.quantity),
-          reason: 'sale',
-          reference_type: 'order',
-          reference_id: orderId
-        }])
-
+        // سند ساده (برای صفحه خلاصه حسابداری قدیمی)
         await supabase.from('accounting_entries').insert([{
           entry_type: 'revenue_sale',
-          amount: Number(item.price) * Number(item.quantity),
+          amount: lineTotal,
           description: `درآمد فروش - سفارش`,
           product_id: item.id,
           quantity: Number(item.quantity),
@@ -281,8 +332,127 @@ export const useProductsStore = defineStore('products', {
           vendor_id: product.vendor_id || null,
           customer_name: customerName,
           reference_type: 'order',
-          reference_id: orderId
+          reference_id: order.id
         }])
+
+        // سند حسابداری دوبل واقعی فروش: بدهکار حساب دریافتنی، بستانکار فروش + مالیات بر ارزش افزوده
+        const saleLines = [
+          { account_code: '1030', debit: lineTotal, credit: 0, description: 'دریافتنی از مشتری' },
+          { account_code: '4010', debit: 0, credit: netAmount, description: 'فروش کالا' }
+        ]
+        if (vatAmount > 0) {
+          saleLines.push({ account_code: '2020', debit: 0, credit: vatAmount, description: 'مالیات بر ارزش افزوده فروش' })
+        }
+        await journalStore.postEntry({
+          description: `فروش - سفارش`,
+          source_type: 'sale',
+          source_id: order.id,
+          lines: saleLines
+        })
+
+        // سند بهای تمام‌شده کالای فروش‌رفته: بدهکار COGS / بستانکار موجودی کالا
+        if (cogsAmount > 0) {
+          await journalStore.postEntry({
+            description: `بهای تمام‌شده کالای فروش‌رفته - سفارش`,
+            source_type: 'sale_cogs',
+            source_id: order.id,
+            lines: [
+              { account_code: '5010', debit: cogsAmount, credit: 0 },
+              { account_code: '1040', debit: 0, credit: cogsAmount }
+            ]
+          })
+        }
+      }
+
+      // اطلاع‌رسانی کمبود موجودی به مشتری (در صورت داشتن حساب کاربری)
+      if (shortages.length && order.user_id) {
+        for (const shortage of shortages) {
+          const { data: prod } = await supabase.from('products').select('stock_quantity').eq('id', shortage.product_id).single()
+          await supabase.from('notifications').insert([{
+            user_id: order.user_id,
+            type: 'stock_shortage',
+            title: 'کمبود موجودی در سفارش شما',
+            body: `متاسفانه به دلیل خرید سایر مشتریان، موجودی «${shortage.title}» کافی نبود (درخواست شما: ${shortage.requested} عدد). موجودی در دسترس فعلی: ${prod?.stock_quantity ?? 0} عدد. لطفا سبد خرید یا سفارش خود را اصلاح کنید.`,
+            product_id: shortage.product_id,
+            order_id: order.id
+          }])
+        }
+      }
+
+      return { hasShortage: shortages.length > 0, shortages }
+    },
+
+    // پردازش مرجوعی سفارش: افزایش موجودی انبار (کالا + رنگ) + ثبت گردش کالا + سند حسابداری معکوس (فروش/مالیات/بهای تمام‌شده)
+    // idempotent است - اگر قبلاً برای این سفارش پردازش شده باشد، دوباره انجام نمی‌شود
+    async processOrderReturn(order) {
+      const supabase = useSupabase()
+      const journalStore = useJournalStore()
+
+      const alreadyProcessed = await journalStore.hasEntryForSource('return', order.id)
+      if (alreadyProcessed) return
+
+      for (const item of order.items || []) {
+        const { data: product } = await supabase
+          .from('products')
+          .select('stock_quantity, warehouse_id, vendor_id, purchase_price')
+          .eq('id', item.id)
+          .single()
+        if (!product) continue
+
+        const newQty = Number(product.stock_quantity || 0) + Number(item.quantity)
+        await supabase.from('products').update({ stock_quantity: newQty }).eq('id', item.id)
+
+        if (item.color_id) {
+          const { data: colorRow } = await supabase.from('product_colors').select('quantity').eq('id', item.color_id).single()
+          if (colorRow) {
+            await supabase.from('product_colors').update({ quantity: Number(colorRow.quantity || 0) + Number(item.quantity) }).eq('id', item.color_id)
+          }
+        }
+
+        await supabase.from('inventory_movements').insert([{
+          product_id: item.id,
+          color_id: item.color_id || null,
+          warehouse_id: product.warehouse_id || null,
+          change_qty: Number(item.quantity),
+          reason: 'return',
+          reference_type: 'order',
+          reference_id: order.id
+        }])
+
+        const lineTotal = Number(item.price) * Number(item.quantity)
+        const vatRate = Number(order.vat_rate || 0)
+        const netAmount = Math.round(lineTotal / (1 + vatRate / 100))
+        const vatAmount = lineTotal - netAmount
+        const cogsAmount = Number(product.purchase_price || 0) * Number(item.quantity)
+
+        // سند معکوس فروش: بدهکار فروش+مالیات (کاهش درآمد) / بستانکار حساب دریافتنی (برگشت بدهی مشتری)
+        const returnLines = [
+          { account_code: '4010', debit: netAmount, credit: 0, description: 'برگشت از فروش (مرجوعی)' }
+        ]
+        if (vatAmount > 0) {
+          returnLines.push({ account_code: '2020', debit: vatAmount, credit: 0, description: 'برگشت مالیات بر ارزش افزوده' })
+        }
+        returnLines.push({ account_code: '1030', debit: 0, credit: lineTotal, description: 'برگشت بدهی مشتری' })
+
+        await journalStore.postEntry({
+          description: `مرجوعی سفارش`,
+          source_type: 'return',
+          source_id: order.id,
+          lines: returnLines
+        })
+
+        // برگشت بهای تمام‌شده: بدهکار موجودی کالا / بستانکار بهای تمام‌شده کالای فروش‌رفته
+        if (cogsAmount > 0) {
+          await journalStore.postEntry({
+            description: `برگشت بهای تمام‌شده - مرجوعی سفارش`,
+            source_type: 'return_cogs',
+            source_id: order.id,
+            lines: [
+              { account_code: '1040', debit: cogsAmount, credit: 0 },
+              { account_code: '5010', debit: 0, credit: cogsAmount }
+            ]
+          })
+        }
       }
     }
   }

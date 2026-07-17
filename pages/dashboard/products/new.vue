@@ -103,6 +103,7 @@
           :upload-fn="productsStore.uploadProductImage"
         />
 
+        <SuggestedTags :suggestions="normalCategoryTags" v-model="normalForm.tags" />
         <TagsInput v-model="normalForm.tags" />
 
         <p v-if="errorMsg" class="text-sm text-red-600">{{ errorMsg }}</p>
@@ -160,6 +161,7 @@
           :upload-fn="productsStore.uploadProductImage"
         />
 
+        <SuggestedTags :suggestions="affiliateCategoryTags" v-model="affiliateForm.tags" />
         <TagsInput v-model="affiliateForm.tags" />
 
         <p v-if="errorMsg" class="text-sm text-red-600">{{ errorMsg }}</p>
@@ -170,7 +172,7 @@
 </template>
 
 <script setup>
-import { reactive, ref, onMounted } from 'vue'
+import { reactive, ref, computed, onMounted } from 'vue'
 import { useProductsStore } from '~/stores/products'
 import { useCategoriesStore } from '~/stores/categories'
 import { useVendorsStore } from '~/stores/vendors'
@@ -182,6 +184,7 @@ import PriceInput from '~/components/common/PriceInput.vue'
 import ProductColorsInput from '~/components/common/ProductColorsInput.vue'
 import MultiImageUploader from '~/components/common/MultiImageUploader.vue'
 import TagsInput from '~/components/common/TagsInput.vue'
+import SuggestedTags from '~/components/common/SuggestedTags.vue'
 import ProductCard from '~/components/product/ProductCard.vue'
 
 definePageMeta({ layout: 'dashboard' })
@@ -194,6 +197,14 @@ const warehousesStore = useWarehousesStore()
 const router = useRouter()
 
 const activeTab = ref('normal') // normal | affiliate
+
+// تگ‌های پیش‌فرض دسته‌بندی انتخاب‌شده در هر فرم (برای نمایش به‌عنوان پیشنهاد سریع)
+const normalCategoryTags = computed(
+  () => categoriesStore.categories.find((c) => c.id === normalForm.category_id)?.default_tags || []
+)
+const affiliateCategoryTags = computed(
+  () => categoriesStore.categories.find((c) => c.id === affiliateForm.category_id)?.default_tags || []
+)
 
 function emptyNormalForm() {
   return {

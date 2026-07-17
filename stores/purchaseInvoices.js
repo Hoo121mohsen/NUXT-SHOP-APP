@@ -1,10 +1,11 @@
 import { defineStore } from 'pinia'
+import { useJournalStore } from './journal'
 
 // استور فاکتورهای خرید (purchase_invoices)
 // ثبت هر فاکتور خرید باعث می‌شود:
 //   ۱) موجودی همان تنوع رنگ خریداری‌شده (product_colors.quantity) و موجودی کل محصول افزایش یابد
 //   ۲) یک رکورد گردش کالا (inventory_movements) با دلیل «purchase» و color_id مربوطه ثبت شود
-//   ۳) یک رکورد حسابداری (accounting_entries) از نوع «بدهی» (liability_purchase) ثبت شود
+//   ۳) سند حسابداری دوبل واقعی: بدهکار موجودی کالا + مالیات خرید / بستانکار حساب پرداختنی فروشنده
 //   ۴) در صورت درخواست ادمین، قیمت فروش محصول به‌روزرسانی شود
 export const usePurchaseInvoicesStore = defineStore('purchaseInvoices', {
   state: () => ({
@@ -44,14 +45,27 @@ export const usePurchaseInvoicesStore = defineStore('purchaseInvoices', {
 
     // ثبت فاکتور خرید کامل: هدر فاکتور + ردیف‌ها (هر ردیف می‌تواند شامل تنوع رنگ مشخص باشد)
     // items: [{ product_id, color_id (اختیاری), quantity, unit_price, new_sale_price (اختیاری) }]
-    async createPurchaseInvoice({ invoice_number, vendor_id, warehouse_id, notes, items }) {
+    // unit_price ها مبلغ خالص (قبل از مالیات) هستند؛ vatRate روی جمع کل اعمال می‌شود
+    async createPurchaseInvoice({ invoice_number, vendor_id, warehouse_id, notes, items, vatRate = 0 }) {
       const supabase = useSupabase()
+      const journalStore = useJournalStore()
 
-      const totalAmount = items.reduce((sum, i) => sum + Number(i.quantity) * Number(i.unit_price), 0)
+      const subtotal = items.reduce((sum, i) => sum + Number(i.quantity) * Number(i.unit_price), 0)
+      const vatAmount = Math.round((subtotal * Number(vatRate)) / 100)
+      const totalAmount = subtotal + vatAmount
 
       const { data: invoice, error } = await supabase
         .from('purchase_invoices')
-        .insert([{ invoice_number, vendor_id: vendor_id || null, warehouse_id: warehouse_id || null, notes, total_amount: totalAmount }])
+        .insert([{
+          invoice_number,
+          vendor_id: vendor_id || null,
+          warehouse_id: warehouse_id || null,
+          notes,
+          subtotal,
+          vat_rate: vatRate,
+          vat_amount: vatAmount,
+          total_amount: totalAmount
+        }])
         .select()
         .single()
       if (error) throw error
@@ -72,16 +86,24 @@ export const usePurchaseInvoicesStore = defineStore('purchaseInvoices', {
       for (const item of items) {
         const { data: product } = await supabase
           .from('products')
-          .select('stock_quantity')
+          .select('stock_quantity, title')
           .eq('id', item.product_id)
           .single()
 
+        const wasOutOfStock = Number(product?.stock_quantity || 0) <= 0
         const newQty = Number(product?.stock_quantity || 0) + Number(item.quantity)
         const productUpdate = { stock_quantity: newQty }
         if (item.new_sale_price !== undefined && item.new_sale_price !== null && item.new_sale_price !== '') {
           productUpdate.sale_price = Number(item.new_sale_price)
         }
         await supabase.from('products').update(productUpdate).eq('id', item.product_id)
+
+        // اگر این محصول قبلاً ناموجود بود و حالا موجودی گرفت، به مشترکین «اطلاع بده موجود شد» پیام بده
+        if (wasOutOfStock && newQty > 0) {
+          const { useNotificationsStore } = await import('./notifications')
+          const notificationsStore = useNotificationsStore()
+          await notificationsStore.notifyBackInStock(item.product_id, product?.title || '')
+        }
 
         // موجودی همان تنوع رنگ (هویت با نام رنگ - هگز صرفا نمایشی) افزایش می‌یابد
         if (item.color_id) {
@@ -105,7 +127,7 @@ export const usePurchaseInvoicesStore = defineStore('purchaseInvoices', {
         }])
       }
 
-      // ثبت سند حسابداری: این فاکتور به‌عنوان بدهی شرکت لحاظ می‌شود
+      // سند ساده (برای صفحه خلاصه حسابداری قدیمی)
       await supabase.from('accounting_entries').insert([{
         entry_type: 'liability_purchase',
         amount: totalAmount,
@@ -114,6 +136,20 @@ export const usePurchaseInvoicesStore = defineStore('purchaseInvoices', {
         reference_type: 'purchase_invoice',
         reference_id: invoice.id
       }])
+
+      // سند حسابداری دوبل واقعی: بدهکار موجودی کالا + مالیات خرید / بستانکار حساب پرداختنی فروشنده
+      const lines = [{ account_code: '1040', debit: subtotal, credit: 0, description: 'خرید کالا' }]
+      if (vatAmount > 0) {
+        lines.push({ account_code: '1050', debit: vatAmount, credit: 0, description: 'مالیات بر ارزش افزوده خرید' })
+      }
+      lines.push({ account_code: '2010', debit: 0, credit: totalAmount, description: 'بدهی به فروشنده' })
+
+      await journalStore.postEntry({
+        description: `فاکتور خرید شماره ${invoice_number}`,
+        source_type: 'purchase',
+        source_id: invoice.id,
+        lines
+      })
 
       return invoice
     }

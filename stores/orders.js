@@ -106,9 +106,48 @@ export const useOrdersStore = defineStore('orders', {
       return data || null
     },
 
+    // تغییر وضعیت سفارش:
+    //  - وقتی وضعیت به «تایید سفارش» تغییر کند (یعنی وجه واقعاً دریافت شده)، تازه اینجاست که موجودی انبار کم می‌شود
+    //    و اسناد حسابداری فروش/مالیات/بهای تمام‌شده صادر می‌شوند (نه در لحظه ثبت اولیه سفارش که هنوز پرداختی صورت نگرفته)
+    //  - وقتی وضعیت «مرجوع شد» شود، موجودی انبار برگردانده و سند حسابداری معکوس صادر می‌شود
+    // هر دو عملیات idempotent هستند (با بررسی وجود سند قبلی) تا در صورت تغییر وضعیت تکراری، دوباره پردازش نشوند
     async updateStatus(id, status) {
       const supabase = useSupabase()
-      await supabase.from('orders').update({ status }).eq('id', id)
+      const { useJournalStore } = await import('./journal')
+      const journalStore = useJournalStore()
+
+      let finalStatus = status
+
+      if (status === 'confirmed') {
+        const alreadyProcessed = await journalStore.hasEntryForSource('sale', id)
+        if (!alreadyProcessed) {
+          const { data: order } = await supabase.from('orders').select('*').eq('id', id).single()
+          if (order) {
+            const { useProductsStore } = await import('./products')
+            const productsStore = useProductsStore()
+            // کاهش اتمیک موجودی (جلوگیری از اضافه‌فروش در خرید همزمان چند مشتری) + صدور سند حسابداری
+            const { hasShortage } = await productsStore.processOrderConfirmation(order)
+            // اگر بخشی از سفارش به‌خاطر خرید سایر مشتریان کم‌موجودی شد، به‌جای «تایید سفارش»
+            // وضعیت را «بررسی مجدد» می‌گذاریم تا ادمین/مشتری از این موضوع مطلع و پیگیر اصلاح آن شوند
+            if (hasShortage) finalStatus = 'reviewing'
+          }
+        }
+      }
+
+      if (status === 'returned') {
+        const wasSold = await journalStore.hasEntryForSource('sale', id)
+        const alreadyReturned = await journalStore.hasEntryForSource('return', id)
+        if (wasSold && !alreadyReturned) {
+          const { data: order } = await supabase.from('orders').select('*').eq('id', id).single()
+          if (order) {
+            const { useProductsStore } = await import('./products')
+            const productsStore = useProductsStore()
+            await productsStore.processOrderReturn(order)
+          }
+        }
+      }
+
+      await supabase.from('orders').update({ status: finalStatus }).eq('id', id)
     },
 
     // درج ردیف‌های نرمال‌شده سفارش (با رنگ و فروشنده) بلافاصله بعد از ثبت سفارش در checkout

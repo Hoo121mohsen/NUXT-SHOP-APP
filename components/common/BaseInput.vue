@@ -7,8 +7,9 @@
       :value="modelValue"
       :placeholder="placeholder"
       :required="required"
+      :disabled="disabled"
       @input="$emit('update:modelValue', $event.target.value)"
-      class="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm text-stone-800 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-100"
+      class="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm text-stone-800 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-400 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-100"
     />
     <p v-if="error" class="mt-1 text-xs text-red-600">{{ error }}</p>
   </div>
@@ -21,6 +22,7 @@ defineProps({
   type: { type: String, default: 'text' },
   placeholder: { type: String, default: '' },
   required: { type: Boolean, default: false },
+  disabled: { type: Boolean, default: false },
   error: { type: String, default: '' }
 })
 defineEmits(['update:modelValue'])
