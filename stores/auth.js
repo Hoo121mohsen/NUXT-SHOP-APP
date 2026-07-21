@@ -75,6 +75,16 @@ export const useAuthStore = defineStore('auth', {
       this.profile = null
     },
 
+    // ورود/ثبت‌نام سریع با گوگل یا اپل - نیازمند فعال‌سازی این Provider ها در پنل Supabase (Authentication -> Providers)
+    async signInWithOAuth(provider) {
+      const supabase = useSupabase()
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider, // 'google' | 'apple'
+        options: { redirectTo: window.location.origin }
+      })
+      if (error) this.error = error.message
+    },
+
     // به‌روزرسانی نام نمایشی/آواتار پروفایل کاربر جاری
     async updateProfile({ display_name, avatar_url }) {
       if (!this.user) return

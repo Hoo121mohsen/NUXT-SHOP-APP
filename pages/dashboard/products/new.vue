@@ -89,12 +89,51 @@
             <PriceInput v-model="normalForm.purchase_price" label="قیمت خرید (تومان)" />
             <PriceInput v-model="normalForm.sale_price" label="قیمت فروش (تومان)" />
           </div>
+          <!-- محاسبه خودکار ارزش افزوده و سود خالص بر اساس تنظیمات بخش حسابداری -->
+          <VATBreakdown :sale-price="normalForm.sale_price" />
+        </div>
+
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <BaseInput v-model="normalForm.weight" label="وزن محصول (مثلا 500 گرم یا 1.2 کیلوگرم)" />
+          <BaseInput v-model="normalForm.brand" label="برند محصول" />
         </div>
 
         <BaseInput v-model="normalForm.dimensions" label="ابعاد (مثلا 20x30x10 سانتی‌متر)" />
 
-        <!-- تعداد موجودی دیگر جدا وارد نمی‌شود؛ حاصل جمع تعداد هر رنگ در بخش زیر است -->
-        <ProductColorsInput v-model="normalForm.colors" />
+        <!-- تعداد لایک/دیس‌لایک اولیه که ادمین می‌تواند برای محصول تعیین کند -->
+        <div class="rounded-lg border border-stone-200 p-4 dark:border-stone-700">
+          <p class="mb-3 text-sm font-medium text-stone-700 dark:text-stone-300">👍👎 تعداد لایک و دیس‌لایک اولیه (اختیاری)</p>
+          <div class="grid grid-cols-2 gap-4">
+            <BaseInput v-model="normalForm.likes_count" label="تعداد لایک اولیه" type="number" />
+            <BaseInput v-model="normalForm.dislikes_count" label="تعداد دیس‌لایک اولیه" type="number" />
+          </div>
+          <p class="mt-2 text-xs text-stone-400 dark:text-stone-500">
+            این اعداد به‌عنوان مقدار شروع ثبت می‌شوند؛ با هر رای کاربران، اعداد بلافاصله به‌روز خواهند شد.
+          </p>
+        </div>
+
+        <!-- چک‌باکس فعال‌سازی لینک ویدیوی آپارات -->
+        <div class="rounded-lg border border-stone-200 p-4 dark:border-stone-700">
+          <label class="flex items-center gap-2 text-sm text-stone-700 dark:text-stone-300">
+            <input v-model="normalForm.has_aparat_video" type="checkbox" class="h-4 w-4 rounded border-stone-300 text-brand-600 focus:ring-brand-500" />
+            افزودن لینک ویدیوی معرفی محصول از آپارات
+          </label>
+          <BaseInput
+            v-if="normalForm.has_aparat_video"
+            v-model="normalForm.aparat_video_link"
+            label="لینک ویدیو آپارات"
+            type="url"
+            placeholder="https://www.aparat.com/v/xxxxxxx"
+            class="mt-3"
+          />
+        </div>
+
+        <!-- تعداد موجودی دیگر جدا وارد نمی‌شود؛ حاصل جمع تعداد هر رنگ در بخش زیر است (یا تعداد کل در حالت فاقد تنوع) -->
+        <ProductColorsInput
+          v-model="normalForm.colors"
+          v-model:has-color-variants="normalForm.has_color_variants"
+          v-model:simple-quantity="normalForm.simple_quantity"
+        />
 
         <MultiImageUploader
           v-model="normalForm.images"
@@ -152,6 +191,35 @@
             <PriceInput v-model="affiliateForm.sale_price" label="قیمت نمایشی (تومان)" />
             <BaseInput v-model="affiliateForm.commission_percentage" label="درصد کمیسیون تقریبی (اختیاری)" type="number" />
           </div>
+          <VATBreakdown :sale-price="affiliateForm.sale_price" />
+        </div>
+
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <BaseInput v-model="affiliateForm.weight" label="وزن محصول (اختیاری)" />
+          <BaseInput v-model="affiliateForm.brand" label="برند محصول (اختیاری)" />
+        </div>
+
+        <div class="rounded-lg border border-stone-200 p-4 dark:border-stone-700">
+          <p class="mb-3 text-sm font-medium text-stone-700 dark:text-stone-300">👍👎 تعداد لایک و دیس‌لایک اولیه (اختیاری)</p>
+          <div class="grid grid-cols-2 gap-4">
+            <BaseInput v-model="affiliateForm.likes_count" label="تعداد لایک اولیه" type="number" />
+            <BaseInput v-model="affiliateForm.dislikes_count" label="تعداد دیس‌لایک اولیه" type="number" />
+          </div>
+        </div>
+
+        <div class="rounded-lg border border-stone-200 p-4 dark:border-stone-700">
+          <label class="flex items-center gap-2 text-sm text-stone-700 dark:text-stone-300">
+            <input v-model="affiliateForm.has_aparat_video" type="checkbox" class="h-4 w-4 rounded border-stone-300 text-brand-600 focus:ring-brand-500" />
+            افزودن لینک ویدیوی معرفی محصول از آپارات
+          </label>
+          <BaseInput
+            v-if="affiliateForm.has_aparat_video"
+            v-model="affiliateForm.aparat_video_link"
+            label="لینک ویدیو آپارات"
+            type="url"
+            placeholder="https://www.aparat.com/v/xxxxxxx"
+            class="mt-3"
+          />
         </div>
 
         <MultiImageUploader
@@ -182,6 +250,7 @@ import BaseTextarea from '~/components/common/BaseTextarea.vue'
 import BaseButton from '~/components/common/BaseButton.vue'
 import PriceInput from '~/components/common/PriceInput.vue'
 import ProductColorsInput from '~/components/common/ProductColorsInput.vue'
+import VATBreakdown from '~/components/common/VATBreakdown.vue'
 import MultiImageUploader from '~/components/common/MultiImageUploader.vue'
 import TagsInput from '~/components/common/TagsInput.vue'
 import SuggestedTags from '~/components/common/SuggestedTags.vue'
@@ -210,14 +279,21 @@ function emptyNormalForm() {
   return {
     title: '', category_id: '', vendor_id: '', warehouse_id: '', is_published: false,
     description: '', purchase_price: '', sale_price: '',
-    dimensions: '', colors: [], images: [], tags: []
+    dimensions: '', colors: [], images: [], tags: [],
+    weight: '', brand: '',
+    likes_count: 0, dislikes_count: 0,
+    has_aparat_video: false, aparat_video_link: '',
+    has_color_variants: true, simple_quantity: 0
   }
 }
 function emptyAffiliateForm() {
   return {
     title: '', category_id: '', is_published: false, affiliate_source: '', affiliate_link: '',
     affiliate_product_url: '', affiliate_code: '', description: '',
-    sale_price: '', commission_percentage: '', images: [], tags: []
+    sale_price: '', commission_percentage: '', images: [], tags: [],
+    weight: '', brand: '',
+    likes_count: 0, dislikes_count: 0,
+    has_aparat_video: false, aparat_video_link: ''
   }
 }
 
@@ -251,7 +327,15 @@ async function handleSubmitNormal() {
       purchase_price: Number(normalForm.purchase_price),
       sale_price: Number(normalForm.sale_price),
       dimensions: normalForm.dimensions,
-      colors: normalForm.colors,
+      weight: normalForm.weight || null,
+      brand: normalForm.brand || null,
+      likes_count: Number(normalForm.likes_count) || 0,
+      dislikes_count: Number(normalForm.dislikes_count) || 0,
+      aparat_video_link: normalForm.has_aparat_video ? (normalForm.aparat_video_link || null) : null,
+      has_color_variants: normalForm.has_color_variants,
+      // در حالت فاقد تنوع رنگی، آرایه رنگ‌ها خالی می‌رود و تعداد از فیلد ساده گرفته می‌شود
+      colors: normalForm.has_color_variants ? normalForm.colors : [],
+      stock_quantity: normalForm.has_color_variants ? undefined : Number(normalForm.simple_quantity) || 0,
       images: normalForm.images,
       tags: normalForm.tags,
       is_affiliate: false
@@ -280,6 +364,12 @@ async function handleSubmitAffiliate() {
       purchase_price: 0,
       stock_quantity: 0,
       dimensions: '',
+      weight: affiliateForm.weight || null,
+      brand: affiliateForm.brand || null,
+      likes_count: Number(affiliateForm.likes_count) || 0,
+      dislikes_count: Number(affiliateForm.dislikes_count) || 0,
+      aparat_video_link: affiliateForm.has_aparat_video ? (affiliateForm.aparat_video_link || null) : null,
+      has_color_variants: false,
       colors: [],
       images: affiliateForm.images,
       tags: affiliateForm.tags,

@@ -51,6 +51,35 @@
           <PriceInput v-model="affiliateForm.sale_price" label="قیمت نمایشی (تومان)" />
           <BaseInput v-model="affiliateForm.commission_percentage" label="درصد کمیسیون تقریبی" type="number" />
         </div>
+        <VATBreakdown :sale-price="affiliateForm.sale_price" />
+      </div>
+
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <BaseInput v-model="affiliateForm.weight" label="وزن محصول (اختیاری)" />
+        <BaseInput v-model="affiliateForm.brand" label="برند محصول (اختیاری)" />
+      </div>
+
+      <div class="rounded-lg border border-stone-200 p-4 dark:border-stone-700">
+        <p class="mb-3 text-sm font-medium text-stone-700 dark:text-stone-300">👍👎 تعداد لایک و دیس‌لایک</p>
+        <div class="grid grid-cols-2 gap-4">
+          <BaseInput v-model="affiliateForm.likes_count" label="تعداد لایک" type="number" />
+          <BaseInput v-model="affiliateForm.dislikes_count" label="تعداد دیس‌لایک" type="number" />
+        </div>
+      </div>
+
+      <div class="rounded-lg border border-stone-200 p-4 dark:border-stone-700">
+        <label class="flex items-center gap-2 text-sm text-stone-700 dark:text-stone-300">
+          <input v-model="affiliateForm.has_aparat_video" type="checkbox" class="h-4 w-4 rounded border-stone-300 text-brand-600 focus:ring-brand-500" />
+          افزودن لینک ویدیوی معرفی محصول از آپارات
+        </label>
+        <BaseInput
+          v-if="affiliateForm.has_aparat_video"
+          v-model="affiliateForm.aparat_video_link"
+          label="لینک ویدیو آپارات"
+          type="url"
+          placeholder="https://www.aparat.com/v/xxxxxxx"
+          class="mt-3"
+        />
       </div>
 
       <MultiImageUploader
@@ -111,12 +140,48 @@
           <PriceInput v-model="normalForm.purchase_price" label="قیمت خرید (تومان)" />
           <PriceInput v-model="normalForm.sale_price" label="قیمت فروش (تومان)" />
         </div>
+        <!-- محاسبه خودکار ارزش افزوده و سود خالص بر اساس تنظیمات بخش حسابداری -->
+        <VATBreakdown :sale-price="normalForm.sale_price" />
+      </div>
+
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <BaseInput v-model="normalForm.weight" label="وزن محصول (مثلا 500 گرم یا 1.2 کیلوگرم)" />
+        <BaseInput v-model="normalForm.brand" label="برند محصول" />
       </div>
 
       <BaseInput v-model="normalForm.dimensions" label="ابعاد" />
 
-      <!-- تعداد موجودی از جمع تعداد هر رنگ محاسبه می‌شود -->
-      <ProductColorsInput v-model="normalForm.colors" />
+      <!-- تعداد لایک/دیس‌لایک؛ ادمین می‌تواند اعداد اولیه/فعلی را دستی تنظیم کند -->
+      <div class="rounded-lg border border-stone-200 p-4 dark:border-stone-700">
+        <p class="mb-3 text-sm font-medium text-stone-700 dark:text-stone-300">👍👎 تعداد لایک و دیس‌لایک</p>
+        <div class="grid grid-cols-2 gap-4">
+          <BaseInput v-model="normalForm.likes_count" label="تعداد لایک" type="number" />
+          <BaseInput v-model="normalForm.dislikes_count" label="تعداد دیس‌لایک" type="number" />
+        </div>
+      </div>
+
+      <!-- چک‌باکس فعال‌سازی لینک ویدیوی آپارات -->
+      <div class="rounded-lg border border-stone-200 p-4 dark:border-stone-700">
+        <label class="flex items-center gap-2 text-sm text-stone-700 dark:text-stone-300">
+          <input v-model="normalForm.has_aparat_video" type="checkbox" class="h-4 w-4 rounded border-stone-300 text-brand-600 focus:ring-brand-500" />
+          افزودن لینک ویدیوی معرفی محصول از آپارات
+        </label>
+        <BaseInput
+          v-if="normalForm.has_aparat_video"
+          v-model="normalForm.aparat_video_link"
+          label="لینک ویدیو آپارات"
+          type="url"
+          placeholder="https://www.aparat.com/v/xxxxxxx"
+          class="mt-3"
+        />
+      </div>
+
+      <!-- تعداد موجودی از جمع تعداد هر رنگ محاسبه می‌شود (یا تعداد کل در حالت فاقد تنوع رنگی) -->
+      <ProductColorsInput
+        v-model="normalForm.colors"
+        v-model:has-color-variants="normalForm.has_color_variants"
+        v-model:simple-quantity="normalForm.simple_quantity"
+      />
 
       <MultiImageUploader
         v-model="normalForm.images"
@@ -146,6 +211,7 @@ import BaseTextarea from '~/components/common/BaseTextarea.vue'
 import BaseButton from '~/components/common/BaseButton.vue'
 import PriceInput from '~/components/common/PriceInput.vue'
 import ProductColorsInput from '~/components/common/ProductColorsInput.vue'
+import VATBreakdown from '~/components/common/VATBreakdown.vue'
 import MultiImageUploader from '~/components/common/MultiImageUploader.vue'
 import TagsInput from '~/components/common/TagsInput.vue'
 import SuggestedTags from '~/components/common/SuggestedTags.vue'
@@ -174,13 +240,20 @@ const isAffiliate = ref(false)
 const normalForm = reactive({
   title: '', category_id: '', vendor_id: '', warehouse_id: '', is_published: false,
   description: '', purchase_price: '', sale_price: '',
-  dimensions: '', colors: [], images: [], tags: []
+  dimensions: '', colors: [], images: [], tags: [],
+  weight: '', brand: '',
+  likes_count: 0, dislikes_count: 0,
+  has_aparat_video: false, aparat_video_link: '',
+  has_color_variants: true, simple_quantity: 0
 })
 
 const affiliateForm = reactive({
   title: '', category_id: '', is_published: false, affiliate_source: '', affiliate_link: '',
   affiliate_product_url: '', affiliate_code: '', description: '',
-  sale_price: '', commission_percentage: '', images: [], tags: []
+  sale_price: '', commission_percentage: '', images: [], tags: [],
+  weight: '', brand: '',
+  likes_count: 0, dislikes_count: 0,
+  has_aparat_video: false, aparat_video_link: ''
 })
 
 const loadingProduct = ref(true)
@@ -210,6 +283,12 @@ onMounted(async () => {
       affiliateForm.commission_percentage = product.commission_percentage || ''
       affiliateForm.images = getSortedImages(product)
       affiliateForm.tags = product.tags || []
+      affiliateForm.weight = product.weight || ''
+      affiliateForm.brand = product.brand || ''
+      affiliateForm.likes_count = product.likes_count || 0
+      affiliateForm.dislikes_count = product.dislikes_count || 0
+      affiliateForm.has_aparat_video = !!product.aparat_video_link
+      affiliateForm.aparat_video_link = product.aparat_video_link || ''
     } else {
       normalForm.title = product.title
       normalForm.category_id = product.category_id || ''
@@ -223,6 +302,14 @@ onMounted(async () => {
       normalForm.images = getSortedImages(product)
       normalForm.colors = getSortedColors(product).map((c) => ({ name: c.color_name, hex: c.color_hex, quantity: c.quantity || 0 }))
       normalForm.tags = product.tags || []
+      normalForm.weight = product.weight || ''
+      normalForm.brand = product.brand || ''
+      normalForm.likes_count = product.likes_count || 0
+      normalForm.dislikes_count = product.dislikes_count || 0
+      normalForm.has_aparat_video = !!product.aparat_video_link
+      normalForm.aparat_video_link = product.aparat_video_link || ''
+      normalForm.has_color_variants = product.has_color_variants !== false
+      normalForm.simple_quantity = product.has_color_variants === false ? (product.stock_quantity || 0) : 0
     }
   }
   loadingProduct.value = false
@@ -243,7 +330,14 @@ async function handleSubmitNormal() {
       purchase_price: Number(normalForm.purchase_price),
       sale_price: Number(normalForm.sale_price),
       dimensions: normalForm.dimensions,
-      colors: normalForm.colors,
+      weight: normalForm.weight || null,
+      brand: normalForm.brand || null,
+      likes_count: Number(normalForm.likes_count) || 0,
+      dislikes_count: Number(normalForm.dislikes_count) || 0,
+      aparat_video_link: normalForm.has_aparat_video ? (normalForm.aparat_video_link || null) : null,
+      has_color_variants: normalForm.has_color_variants,
+      colors: normalForm.has_color_variants ? normalForm.colors : [],
+      stock_quantity: normalForm.has_color_variants ? undefined : (Number(normalForm.simple_quantity) || 0),
       images: normalForm.images,
       tags: normalForm.tags
     })
@@ -268,6 +362,11 @@ async function handleSubmitAffiliate() {
       sale_price: Number(affiliateForm.sale_price),
       images: affiliateForm.images,
       tags: affiliateForm.tags,
+      weight: affiliateForm.weight || null,
+      brand: affiliateForm.brand || null,
+      likes_count: Number(affiliateForm.likes_count) || 0,
+      dislikes_count: Number(affiliateForm.dislikes_count) || 0,
+      aparat_video_link: affiliateForm.has_aparat_video ? (affiliateForm.aparat_video_link || null) : null,
       affiliate_source: affiliateForm.affiliate_source,
       affiliate_link: affiliateForm.affiliate_link,
       affiliate_product_url: affiliateForm.affiliate_product_url || null,

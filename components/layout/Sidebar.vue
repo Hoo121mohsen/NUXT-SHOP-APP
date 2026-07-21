@@ -23,6 +23,7 @@
       <p class="mt-3 px-3 text-[10px] font-bold uppercase tracking-wide text-stone-400">مدیریت</p>
       <NuxtLink to="/dashboard/orders" class="rounded-lg px-3 py-2 text-sm text-stone-700 hover:bg-brand-50 dark:text-stone-200 dark:hover:bg-stone-800">🛒 سفارش‌ها</NuxtLink>
       <NuxtLink to="/dashboard/users" class="rounded-lg px-3 py-2 text-sm text-stone-700 hover:bg-brand-50 dark:text-stone-200 dark:hover:bg-stone-800">👤 کاربران و دسترسی‌ها</NuxtLink>
+      <NuxtLink to="/dashboard/site-settings" class="rounded-lg px-3 py-2 text-sm text-stone-700 hover:bg-brand-50 dark:text-stone-200 dark:hover:bg-stone-800">⚙️ تنظیمات سایت</NuxtLink>
       <NuxtLink to="/dashboard/comments" class="rounded-lg px-3 py-2 text-sm text-stone-700 hover:bg-brand-50 dark:text-stone-200 dark:hover:bg-stone-800">💬 نظرات محصولات</NuxtLink>
       <NuxtLink to="/dashboard/tickets" class="rounded-lg px-3 py-2 text-sm text-stone-700 hover:bg-brand-50 dark:text-stone-200 dark:hover:bg-stone-800">🎫 پیام‌های پشتیبانی</NuxtLink>
       <NuxtLink to="/" class="mt-4 rounded-lg px-3 py-2 text-sm text-stone-500 hover:bg-stone-50 dark:hover:bg-stone-800">← بازگشت به سایت</NuxtLink>

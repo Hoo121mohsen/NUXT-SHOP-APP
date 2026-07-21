@@ -75,6 +75,53 @@ export const useProductsStore = defineStore('products', {
       return shuffled.slice(0, limit)
     },
 
+    // ============================================
+    // لایک / دیس‌لایک محصول (صفحه جزئیات محصول)
+    // ============================================
+
+    // دریافت رای فعلی کاربر برای یک محصول (اگر قبلا رای داده باشد)
+    async fetchUserVote(productId, userId) {
+      const supabase = useSupabase()
+      const { data, error } = await supabase
+        .from('product_likes')
+        .select('*')
+        .eq('product_id', productId)
+        .eq('user_id', userId)
+        .maybeSingle()
+      if (error) {
+        console.error('خطا در دریافت رای کاربر:', error)
+        return null
+      }
+      return data
+    },
+
+    // ثبت رای جدید (لایک یا دیس‌لایک)؛ اگر کاربر قبلا رای مخالف داده بود، رای را تغییر می‌دهد
+    // تعداد لایک/دیس‌لایک روی جدول products به‌صورت خودکار توسط تریگر دیتابیس به‌روز می‌شود
+    async castVote(productId, userId, voteType) {
+      const supabase = useSupabase()
+      const { data, error } = await supabase
+        .from('product_likes')
+        .upsert(
+          [{ product_id: productId, user_id: userId, like_type: voteType }],
+          { onConflict: 'product_id,user_id' }
+        )
+        .select()
+        .single()
+      if (error) throw error
+      return data
+    },
+
+    // حذف رای کاربر (اگر روی همان دکمه دوباره کلیک کند)
+    async removeVote(productId, userId) {
+      const supabase = useSupabase()
+      const { error } = await supabase
+        .from('product_likes')
+        .delete()
+        .eq('product_id', productId)
+        .eq('user_id', userId)
+      if (error) throw error
+    },
+
     // آپلود یک فایل عکس محصول در باکت product-media
     async uploadProductImage(file) {
       const supabase = useSupabase()
@@ -181,7 +228,9 @@ export const useProductsStore = defineStore('products', {
       const supabase = useSupabase()
       const { images, colors, tags, ...productFields } = payload
 
-      const computedStock = colors
+      // اگر محصول تنوع رنگی دارد، موجودی کل از جمع تعداد رنگ‌ها محاسبه می‌شود
+      // اگر تنوع رنگی ندارد (colors خالی است)، از فیلد stock_quantity که مستقیما در payload آمده استفاده می‌شود
+      const computedStock = colors?.length
         ? colors.reduce((sum, c) => sum + (Number(c.quantity) || 0), 0)
         : undefined
 

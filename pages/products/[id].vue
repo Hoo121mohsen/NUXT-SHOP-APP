@@ -85,6 +85,23 @@
           <span class="font-medium text-stone-800 dark:text-stone-200">فروشنده: </span>{{ product.vendors.name }}
         </p>
 
+        <!-- وزن محصول -->
+        <p v-if="product.weight" class="mt-1 text-sm text-stone-600 dark:text-stone-400">
+          <span class="font-medium text-stone-800 dark:text-stone-200">وزن: </span>{{ product.weight }}
+        </p>
+
+        <!-- برند محصول -->
+        <p v-if="product.brand" class="mt-1 text-sm text-stone-600 dark:text-stone-400">
+          <span class="font-medium text-stone-800 dark:text-stone-200">برند: </span>{{ product.brand }}
+        </p>
+
+        <!-- لایک / دیس‌لایک با آیکون شست بالا و پایین -->
+        <ProductLikeButtons
+          :product-id="product.id"
+          :initial-likes="product.likes_count || 0"
+          :initial-dislikes="product.dislikes_count || 0"
+        />
+
         <p class="mt-4 leading-7 text-stone-600 dark:text-stone-400">{{ product.description }}</p>
 
         <!-- تگ‌های سئو -->
@@ -117,6 +134,9 @@
 
     <p v-else class="text-stone-500">محصول مورد نظر یافت نشد.</p>
 
+    <!-- ویدیوی معرفی محصول از آپارات - فقط اگر لینک ثبت شده باشد نمایش داده می‌شود -->
+    <ProductAparatVideo v-if="product" :aparat-link="product.aparat_video_link" />
+
     <ProductComments v-if="product" :product-id="product.id" />
 
     <RelatedProducts v-if="product" :exclude-id="product.id" />
@@ -139,6 +159,8 @@ import { useNotificationsStore } from '~/stores/notifications'
 import ProductGallery from '~/components/product/ProductGallery.vue'
 import RelatedProducts from '~/components/product/RelatedProducts.vue'
 import ProductComments from '~/components/product/ProductComments.vue'
+import ProductLikeButtons from '~/components/product/ProductLikeButtons.vue'
+import ProductAparatVideo from '~/components/product/ProductAparatVideo.vue'
 import ResponsiveSheet from '~/components/common/ResponsiveSheet.vue'
 import ColorQuantityPicker from '~/components/product/ColorQuantityPicker.vue'
 import BaseButton from '~/components/common/BaseButton.vue'

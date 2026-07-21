@@ -169,8 +169,15 @@
                     <p><span class="font-medium text-stone-800 dark:text-stone-200">فروشنده:</span> {{ p.vendors?.name || '—' }}</p>
                     <p><span class="font-medium text-stone-800 dark:text-stone-200">انبار:</span> {{ p.warehouses?.name || '—' }}</p>
                     <p><span class="font-medium text-stone-800 dark:text-stone-200">ابعاد:</span> {{ p.dimensions || '—' }}</p>
+                    <p><span class="font-medium text-stone-800 dark:text-stone-200">وزن:</span> {{ p.weight || '—' }}</p>
+                    <p><span class="font-medium text-stone-800 dark:text-stone-200">برند:</span> {{ p.brand || '—' }}</p>
                     <p><span class="font-medium text-stone-800 dark:text-stone-200">قیمت خرید:</span> {{ formatToman(p.purchase_price) }} تومان</p>
                     <p><span class="font-medium text-stone-800 dark:text-stone-200">قیمت فروش:</span> {{ formatToman(p.sale_price) }} تومان</p>
+                    <p>
+                      <span class="font-medium text-stone-800 dark:text-stone-200">لایک/دیس‌لایک:</span>
+                      👍 {{ p.likes_count || 0 }} — 👎 {{ p.dislikes_count || 0 }}
+                    </p>
+                    <p v-if="p.aparat_video_link" class="truncate"><span class="font-medium text-stone-800 dark:text-stone-200">ویدیو آپارات:</span> {{ p.aparat_video_link }}</p>
                     <p v-if="p.is_affiliate"><span class="font-medium text-stone-800 dark:text-stone-200">منبع Affiliate:</span> {{ p.affiliate_source }}</p>
                     <p v-if="p.is_affiliate" class="truncate"><span class="font-medium text-stone-800 dark:text-stone-200">لینک:</span> {{ p.affiliate_link }}</p>
                   </div>
