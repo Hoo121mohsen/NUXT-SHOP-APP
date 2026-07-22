@@ -1,524 +1,403 @@
-# فروشگاه آنلاین Nuxt 3 + Tailwind + Supabase (RTL)
-
-نسخه جدید فروشگاه که از Vue ساده به **Nuxt 3** منتقل شده تا از رندر سمت سرور (SSR) و سئوی قوی‌تر بهره‌مند شود. کل رابط کاربری راست‌چین (RTL) است و حالت روز/شب دارد.
-
-## چرا Nuxt به‌جای Vue خالص؟
-Vue خالص (SPA) صفحه را در مرورگر می‌سازد، یعنی موتورهای جستجو در نگاه اول یک صفحه‌ی خالی می‌بینند. Nuxt هر صفحه (به‌خصوص صفحه محصول) را در سرور از قبل رندر می‌کند (`useAsyncData` در `pages/products/[id].vue`) و به همراه `useSeoMeta` عنوان و توضیحات هر صفحه را داینامیک می‌سازد؛ این دقیقاً همان چیزی است که برای ایندکس شدن محصولات در گوگل لازم است.
-
-## ساختار پروژه
-
-```
-nuxt-shop/
-├── nuxt.config.ts              # تنظیمات اصلی (RTL، تیلویند، پینیا، متغیرهای محیطی)
-├── tailwind.config.js           # پالت رنگی brand/accent + darkMode: 'class'
-├── app.vue                       # ریشه اپلیکیشن - مقداردهی اولیه سبد خرید/wishlist/دارک‌مود
-├── .env.example
-├── supabase/schema.sql           # تمام جداول، ستون‌ها، PK/FK و RLS
-├── middleware/auth.global.js     # محافظت از /dashboard و /checkout
-├── layouts/
-│   ├── default.vue                # Navbar + Footer (سایت اصلی)
-│   └── dashboard.vue              # Sidebar (پنل مدیریت)
-├── plugins/supabase.ts            # کلاینت Supabase (universal - هم سرور هم کلاینت)
-├── composables/
-│   ├── useSupabase.js
-│   ├── useDarkMode.js              # حالت روز/شب با ذخیره در localStorage
-│   └── useProductHelpers.js        # محاسبه قیمت نهایی، کاور، موجودی و ...
-├── stores/                         # Pinia
-│   ├── auth.js
-│   ├── categories.js
-│   ├── products.js                  # شامل آپلود عکس، رنگ، تخفیف
-│   ├── cart.js
-│   └── wishlist.js
-├── components/
-│   ├── common/
-│   │   ├── BaseButton / BaseInput / BaseTextarea / BaseModal / LoadingSpinner
-│   │   ├── DarkModeToggle.vue
-│   │   ├── TagsInput.vue               # تگ‌های سئو
-│   │   ├── ColorPicker.vue             # یک اسلات رنگ (تایپ نام + دایره + پالت)
-│   │   ├── ProductColorsInput.vue      # ۷ اسلات ColorPicker
-│   │   ├── MultiImageUploader.vue      # آپلود چندگانه (سقف قابل تنظیم، محصول = ۷)
-│   │   └── SingleImageUploader.vue     # آپلود تک‌عکس گرد (دسته‌بندی)
-│   ├── layout/ (Navbar, Footer, Sidebar)
-│   ├── category/ (CategoryCircle, CategoryList)
-│   ├── product/ (ProductCard, ProductGrid, HorizontalProductScroll, ProductGallery, RelatedProducts)
-│   ├── cart/ (CartItem, CartSummary)
-│   └── auth/ (LoginForm, RegisterForm)
-└── pages/
-    ├── index.vue                       # دسته‌بندی‌ها + ردیف تخفیف‌دارها + محصولات رندم
-    ├── products/[id].vue                # جزئیات محصول (SSR برای سئو)
-    ├── cart.vue / checkout.vue
-    ├── login.vue / register.vue
-    └── dashboard/
-        ├── index.vue                    # آمار کلی
-        ├── categories.vue                # افزودن دسته‌بندی + نمایش فوری
-        ├── products/index.vue            # لیست و حذف محصولات
-        ├── products/new.vue              # فرم کامل افزودن محصول
-        ├── products/[id]/edit.vue        # ویرایش محصول
-        ├── discounts.vue                 # اعمال تخفیف گروهی
-        └── orders.vue                    # مدیریت سفارش‌ها
-```
-
-## پیاده‌سازی خواسته‌های شما
-
-| خواسته | فایل مربوطه |
-|---|---|
-| RTL کامل | `nuxt.config.ts` → `htmlAttrs: { dir: 'rtl', lang: 'fa' }` + فونت وزیرمتن |
-| حالت روز/شب | `composables/useDarkMode.js` + `DarkModeToggle.vue` + `darkMode:'class'` در Tailwind |
-| Navbar ریسپانسیو + سرچ + همبرگری | `components/layout/Navbar.vue` |
-| دسته‌بندی (عکس گرد + عنوان + نمایش فوری) | `pages/dashboard/categories.vue` + `stores/categories.js` (آیتم تازه با `unshift` بلافاصله در همان صفحه اضافه می‌شود) |
-| فرم محصول کامل (قیمت خرید/فروش، موجودی، ابعاد، رنگ، دسته، ۷ عکس، تگ سئو) | `pages/dashboard/products/new.vue` |
-| رنگ‌بندی تایپی + دایره + پالت بصری (۷ اسلات) | `ColorPicker.vue` (هر اسلات) + `ProductColorsInput.vue` (مدیریت ۷ تا) |
-| نمایش کارت محصول + ID بلافاصله بعد از ثبت | `pages/dashboard/products/new.vue` → بعد از `createProduct` مقدار `createdProduct` ست می‌شود و `ProductCard` + شناسه نمایش داده می‌شود |
-| کارت محصول (قیمت، wishlist، موجودی، رنگ‌ها، فقط عکس اول) | `components/product/ProductCard.vue` |
-| صفحه جزئیات (بدون قیمت خرید، گالری اسکرول+زوم، پیشنهادی رندم) | `pages/products/[id].vue` + `ProductGallery.vue` + `RelatedProducts.vue` |
-| تخفیف گروهی + بج قرمز درصد تخفیف | `pages/dashboard/discounts.vue` + بج قرمز در `ProductCard.vue` |
-| صفحه اول (دسته‌بندی → ردیف افقی تک‌خط تخفیف‌دارها → محصولات رندم) | `pages/index.vue` + `HorizontalProductScroll.vue` |
-
-## مدل‌های Supabase (جداول، ستون‌ها، نوع داده، PK/FK)
-
-اسکریپت کامل در `supabase/schema.sql` است. خلاصه‌اش:
-
-### 1. `categories`
-| ستون | نوع | توضیح |
-|---|---|---|
-| id | uuid | **PK**, `gen_random_uuid()` |
-| title | text | عنوان دسته‌بندی |
-| image_url | text | لینک عکس گرد (Storage) |
-| created_at | timestamptz | |
-
-### 2. `products`
-| ستون | نوع | توضیح |
-|---|---|---|
-| id | uuid | **PK** |
-| title | text | |
-| description | text | |
-| purchase_price | numeric(12,0) | قیمت خرید (فقط پنل مدیریت) |
-| sale_price | numeric(12,0) | قیمت فروش (عمومی) |
-| stock_quantity | integer | موجودی |
-| dimensions | text | ابعاد |
-| tags | text[] | تگ‌های سئو |
-| discount_percentage | numeric(5,2) | درصد تخفیف فعلی |
-| category_id | uuid | **FK → categories.id** (`on delete set null`) |
-| created_at / updated_at | timestamptz | |
-
-### 3. `product_images` (حداکثر ۷ ردیف به ازای هر محصول)
-| ستون | نوع | توضیح |
-|---|---|---|
-| id | uuid | **PK** |
-| product_id | uuid | **FK → products.id** (`on delete cascade`) |
-| image_url | text | |
-| sort_order | integer | ۰ = تصویر کاور کارت محصول |
-
-### 4. `product_colors` (حداکثر ۷ ردیف به ازای هر محصول)
-| ستون | نوع | توضیح |
-|---|---|---|
-| id | uuid | **PK** |
-| product_id | uuid | **FK → products.id** (`on delete cascade`) |
-| color_name | text | نام تایپ‌شده (مثلا "قرمز") |
-| color_hex | text | کد HEX انتخاب‌شده از پالت |
-| sort_order | integer | |
-
-### 5. `orders`
-| ستون | نوع | توضیح |
-|---|---|---|
-| id | uuid | **PK** |
-| user_id | uuid | **FK → auth.users.id** (`on delete set null`) |
-| full_name / phone / address | text | |
-| items | jsonb | آرایه آیتم‌های سبد خرید در لحظه سفارش |
-| total_price | numeric(12,0) | |
-| status | text | pending / processing / shipped / delivered |
-| created_at | timestamptz | |
-
-### 6. `wishlists` (اختیاری - فعلا wishlist در localStorage است)
-| ستون | نوع | توضیح |
-|---|---|---|
-| id | uuid | **PK** |
-| user_id | uuid | **FK → auth.users.id** (`on delete cascade`) |
-| product_id | uuid | **FK → products.id** (`on delete cascade`) |
-| created_at | timestamptz | |
-| — | unique(user_id, product_id) | جلوگیری از تکرار |
-
-## مراحل راه‌اندازی
-
-### ۱. نصب پکیج‌ها
-```bash
-npm install
-```
-
-### ۲. تنظیم Supabase
-1. در [supabase.com](https://supabase.com) پروژه بسازید و از **Settings > API** مقادیر URL و anon key را بردارید.
-2. فایل `.env.example` را کپی و به‌نام `.env` ذخیره کنید و مقادیر را پر کنید:
-```
-SUPABASE_URL=https://xxxx.supabase.co
-SUPABASE_ANON_KEY=xxxxxxxxxxxxx
-```
-
-### ۳. ساخت جداول
-کل فایل `supabase/schema.sql` را در **SQL Editor** پروژه Supabase اجرا کنید (جداول + RLS را می‌سازد).
-
-### ۴. ساخت باکت‌های Storage
-در بخش **Storage** دو باکت زیر را بسازید و هر دو را **Public** کنید:
-- `product-media` (برای عکس‌های محصول)
-- `category-media` (برای عکس دسته‌بندی)
-
-سپس Policyهای کامنت‌شده در انتهای `schema.sql` را از حالت کامنت خارج و اجرا کنید تا آپلود فایل مجاز شود.
-
-### ۵. فعال‌سازی احراز هویت با ایمیل
-در **Authentication > Providers**، Email را فعال نگه دارید. برای تست سریع می‌توانید Confirm email را در **Authentication > Settings** غیرفعال کنید.
-
-### ۶. اجرا
-```bash
-npm run dev
-```
-آدرس `http://localhost:3000` را باز کنید.
-
-## نکات مهم
-
-- **RLS فعلی** به هر کاربر لاگین‌کرده اجازه مدیریت محصولات/دسته‌بندی‌ها را می‌دهد. برای production توصیه می‌شود یک ستون/جدول نقش ادمین اضافه کرده و Policyها را به آن محدود کنید.
-- **رنگ‌بندی محصول**: هر اسلات یک شیء `{ name, hex }` است؛ کلیک روی دایره، پالت رنگ نیتیو مرورگر + چند رنگ پرکاربرد را باز می‌کند.
-- **گالری محصول**: کلیک روی تصویر اصلی آن را در یک مودال تمام‌صفحه بزرگ‌نمایی می‌کند؛ ردیف پایین گالری قابل اسکرول است.
-- **ردیف تخفیف‌دارهای صفحه اول** با `overflow-x-auto` و `flex` پیاده شده تا همیشه **یک ردیف** بماند و در موبایل و دسکتاپ به‌صورت افقی اسکرول شود.
-- **حالت روز/شب** روی تگ `<html>` کلاس `dark` را اضافه/حذف می‌کند و تمام کلاس‌های Tailwind با پیشوند `dark:` به آن واکنش نشان می‌دهند.
-
-## دستورات مفید
-```bash
-npm run dev        # اجرای پروژه در حالت توسعه
-npm run build      # ساخت نسخه نهایی (SSR)
-npm run generate   # خروجی استاتیک (در صورت نیاز)
-npm run preview    # پیش‌نمایش نسخه build شده
-```
-
-## به‌روزرسانی: تاریخ شمسی، بارکد، و سیستم یکپارچه انبار/حسابداری/سفارش
-
-### چیزهایی که باید انجام بدی قبل از تست
-1. `npm install` را دوباره اجرا کن (پکیج‌های `jalaali-js`, `jsbarcode`, `qrcode`, `html2pdf.js` اضافه شده‌اند).
-2. کل فایل `supabase/schema.sql` را دوباره در SQL Editor اجرا کن (جداول جدید: `purchase_invoices`, `purchase_invoice_items`, `inventory_movements`, `accounting_entries` + ستون `quantity` روی `product_colors`).
-
-### رنگ‌بندی محصول (تغییر مهم)
-- دیگر اینپوت «تعداد موجودی» جدا وجود ندارد. برای هر رنگی که اضافه می‌کنی، یک اینپوت «تعداد» کنارش هست.
-- موجودی کل محصول = جمع تعداد همه رنگ‌ها (خودکار محاسبه می‌شود).
-- انتخاب رنگ دیگر پنجره با تعداد محدود نیست؛ خود دایره یک `input[type=color]` نیتیو مرورگر است — با کلیک، پالت کامل (و در کروم/اج ابزار قطره‌چکان) باز می‌شود. تعداد رنگ‌ها نامحدود است (دکمه «+ افزودن رنگ جدید»).
-
-### تاریخ شمسی
-همه‌جا (سفارش‌ها، فاکتور خرید، حسابداری، گردش کالا) از `composables/useJalaliDate.js` استفاده می‌شود.
-
-### تومان در فرم‌ها، ریال در فاکتورها
-- در فرم تعریف محصول و فاکتور خرید، قیمت را به **تومان** وارد می‌کنی (کامپوننت `PriceInput.vue` با جداکننده هزارگان زنده + هشدار زرد بالای فیلدها).
-- در فاکتورهای چاپی (خرید و فروش) و دفتر حسابداری، مبلغ خودکار به **ریال** (×۱۰) با جداکننده سه‌رقمی فارسی نمایش داده می‌شود (`formatRial` در `useProductHelpers.js`).
-
-### بارکد
-- **بارکد خطی (Code128)**: روی فاکتور خرید و فاکتور فروش (`LinearBarcode.vue`).
-- **بارکد مربعی/QR**: روی برچسب انبار هر محصول در صفحه «گردش کالا» (`MatrixBarcode.vue`) برای اسکن سریع.
-
-### سیستم یکپارچه (Inventory + Accounting + Orders)
-- **تعریف محصول جدید** (غیر Affiliate) با موجودی > ۰ → خودکار ثبت می‌شود: دارایی اولیه (`accounting_entries`) + گردش کالا نوع «موجودی اولیه» (`inventory_movements`).
-- **صدور فاکتور خرید** (`/dashboard/purchase-invoices`) → موجودی انبار محصولات افزایش می‌یابد + گردش کالا «خرید» ثبت می‌شود + مبلغ کل به‌عنوان **بدهی شرکت** در دفتر حسابداری ثبت می‌شود.
-- **ثبت سفارش مشتری** (checkout) → موجودی هر کالا کم می‌شود + گردش کالا «فروش» ثبت می‌شود + مبلغ فروش به‌عنوان **درآمد** در دفتر حسابداری ثبت می‌شود.
-- صفحه `/dashboard/inventory`: با انتخاب یک محصول، کل تاریخچه گردش آن (از تعریف اولیه، فاکتورهای خرید، تا سفارش‌های مشتری) را با تاریخ شمسی نشان می‌دهد.
-- صفحه `/dashboard/accounting`: خلاصه دارایی/بدهی/درآمد + دفتر کامل اسناد.
-- در تمام جداول گزارش مالی، هاور روی نام محصول عکس کاور آن را نشان می‌دهد (`ProductNameHover.vue`).
-
-### چاپ و PDF فاکتورها
-صفحات `/dashboard/purchase-invoices/[id]` و `/dashboard/orders/[id]` هرکدام:
-- دکمه تعویض اندازه بین **A4** و **A5** (عرض ناحیه چاپ را متناسب تغییر می‌دهد).
-- دکمه «چاپ» (`window.print`).
-- دکمه «دانلود PDF» (کتابخانه `html2pdf.js`، کاملاً سمت کلاینت).
-
-## به‌روزرسانی: پیگیری سفارش، وضعیت‌های جدید، فاکتور خرید/فروش یکپارچه، اسکلتون لودر و دارک‌مود پیش‌فرض
-
-### قبل از تست
-1. کل `supabase/schema.sql` را دوباره اجرا کن (ستون جدید `order_number` روی `orders`).
-2. `npm install` لازم نیست (پکیج جدیدی اضافه نشده).
-
-### سفارش‌ها
-- هر سفارش با ثبت، یک **کد یکتا** می‌گیرد (مثلا `ORD-4F82K9`) که بعد از تکمیل خرید به مشتری نمایش داده می‌شود.
-- وضعیت‌های سفارش (`stores/orders.js` → `ORDER_STATUSES`): در انتظار تایید پرداخت → تایید سفارش → آماده ارسال → تحویل به پست/باربری → تحویل داده شد، به‌علاوه دو وضعیت مستقل «بررسی مجدد» و «مرجوع شد».
-- مشتری از صفحه‌ی `/track-order` با کد یکتا + شماره تماس می‌تواند وضعیت سفارشش را ببیند (نوار مراحل). کاربران لاگین‌کرده صفحه‌ی `/my-orders` هم دارند.
-- داشبورد سفارش‌ها (`/dashboard/orders`) فیلتر جستجو بر اساس کد سفارش/نام مشتری، بازه تاریخ (شمسی روی نمایش، انتخاب میلادی روی فرم استاندارد HTML)، و بازه مبلغ دارد + صفحه‌بندی.
-
-### فاکتورهای خرید/فروش یکپارچه
-صفحه‌ی `/dashboard/purchase-invoices` («فاکتورهای خرید/فروش» در سایدبار) حالا فاکتورهای خرید دستی **و** فاکتورهای فروش خودکار (همان سفارش‌های مشتریان) را در یک جدول واحد نشان می‌دهد؛ با فیلتر نوع (خرید/فروش)، بازه تاریخ، بازه مبلغ، و جستجوی شماره فاکتور. فرم ثبت فاکتور خرید دستی هنوز فقط برای خریدهاست؛ فاکتور فروش به‌ازای هر سفارش سایت خودکار صادر می‌شود (نیازی به ثبت دستی نیست).
-
-### Skeleton Loader (به‌جای اسپینر چرخشی)
-همه‌ی صفحاتی که قبلاً لودینگ چرخشی داشتند حالا افکت اسکلتونِ شیشه‌ای (شیمر) دارند: `SkeletonBox`, `SkeletonProductCard`, `SkeletonGrid`, `SkeletonList`, `SkeletonTable` در `components/common/`.
-
-### دارک‌مود پیش‌فرض + Glassmorphism
-- تم پیش‌فرض سایت حالا **شب/تیره** است (`composables/useDarkMode.js` + `nuxt.config.ts`). کاربر می‌تواند با دکمه دارک‌مود در Navbar به روشن تغییر دهد؛ انتخابش ذخیره می‌شود.
-- افکت شیشه‌ای (`glass` و `glass-strong` در `assets/css/main.css`) روی Navbar، منوی موبایل، Sidebar داشبورد، Modal، Footer و کارت‌های ورود/ثبت‌نام اعمال شده. کارت محصول طبق درخواست قبلی عمداً بدون افکت دارک/شیشه باقی مانده تا همیشه یک‌شکل بماند.
-
-## به‌روزرسانی: انتخاب رنگ در خرید، مدیریت موجودی/سفارشات، RBAC و پنل تامین‌کننده
-
-### قبل از تست
-کل `supabase/schema.sql` را دوباره در SQL Editor اجرا کن. این نسخه جداول/تریگر جدید زیر را اضافه می‌کند:
-- `profiles` (+ تریگر `on_auth_user_created` که با هر ثبت‌نام جدید یک پروفایل با نقش `customer` می‌سازد)
-- `vendor_suppliers`, `order_items`, `order_vendor_statuses`
-
-⚠️ برای بازتاب لحظه‌ای (Realtime) تغییر وضعیت تامین‌کننده، جدول `order_vendor_statuses` باید به انتشار Realtime اضافه شود. در پنل Supabase برو به **Database → Replication** و جدول `order_vendor_statuses` را فعال کن (یا خط کامنت‌شده `alter publication supabase_realtime add table order_vendor_statuses;` در انتهای بخش ۱۵ فایل schema.sql را اجرا کن).
-
-### تعیین اولین ادمین
-چون نقش پیش‌فرض هر کاربر جدید `customer` است، بعد از ثبت‌نام اولین حساب خودت، این SQL را یک‌بار در SQL Editor بزن تا ادمین شوی:
-```sql
-update profiles set role = 'admin' where email = 'YOUR_EMAIL@example.com';
-```
-
-### فرانت: انتخاب رنگ و تعداد هنگام خرید
-- صفحه محصول موجودی هر رنگ را جداگانه نشان می‌دهد و انتخاب رنگ را قبل از «افزودن به سبد خرید» اجباری می‌کند (اگر محصول رنگ‌بندی داشته باشد).
-- با ثبت سفارش، موجودی همان رنگ انتخابی (نه کل محصول به‌صورت کلی) کسر می‌شود.
-- سبد خرید حالا رنگ هر آیتم را جدا نشان می‌دهد؛ محصول با رنگ‌های مختلف، ردیف‌های جدا در سبد دارد.
-- تاریخ‌های صفحه «سفارش‌های من» با `toJalaliDate` به شمسی نمایش داده می‌شوند.
-
-### پنل ادمین: سفارش‌های آکاردئونی
-صفحه `/dashboard/orders` حالا هر سفارش را به‌صورت آکاردئون باز/بسته نشان می‌دهد؛ داخل هر سفارش، کالاها بر اساس **فروشنده** گروه‌بندی شده‌اند، هر گروه رنگ/تعداد/قیمت هر کالا و وضعیت مجزای همان فروشنده را دارد (`components/dashboard/OrdersAccordion.vue` - در پنل مدیر فروش و تامین‌کننده هم استفاده می‌شود).
-
-### مدیریت کاربران و نقش‌ها (RBAC)
-صفحه `/dashboard/users` (فقط ادمین):
-- جستجوی کاربران بر اساس ایمیل.
-- تغییر نقش: `admin` (دسترسی کامل) / `sales_manager` (مدیر فروش) / `supplier` (تامین‌کننده) / `customer` (بدون دسترسی پنل).
-- برای نقش تامین‌کننده، اتصال به یک یا چند فروشنده (vendor) از همان صفحه.
-
-**امنیت مسیر**: کاربرانی که نقش `admin` ندارند اصلاً لینک «داشبورد» را در Navbar نمی‌بینند و اگر مستقیم به `/dashboard` بروند، خودکار به داشبورد اختصاصی نقش خودشان (`/sales-dashboard` یا `/supplier-dashboard`) یا به صفحه اصلی هدایت می‌شوند (`middleware/auth.global.js`).
-
-### پنل تامین‌کننده (`/supplier-dashboard`)
-- فقط سفارش‌هایی را می‌بیند که حداقل یک ردیف مربوط به فروشنده(های) متصل به او دارند.
-- اگر همه‌ی آیتم‌های یک سفارش متعلق به همان فروشنده باشد → دکمه «آماده ارسال» فعال است.
-- اگر سفارش شامل کالاهایی از فروشندگان دیگر هم باشد → هشدار زرد «سفارش کامل نیست» نمایش داده می‌شود و دکمه «آماده ارسال» غیرفعال است.
-- تغییر وضعیت توسط تامین‌کننده، از طریق Supabase Realtime بلافاصله در پنل ادمین و مدیر فروش (`/sales-dashboard`) بازتاب داده می‌شود، بدون نیاز به رفرش صفحه.
-
-## به‌روزرسانی: آکاردئون محصولات ادمین، انتخاب چندرنگ، اسکرول لمسی گالری
-
-### لیست محصولات ادمین → آکاردئون
-`/dashboard/products` دیگر با کلیک روی ردیف به صفحه دیگری نمی‌رود؛ همان ردیف باز می‌شود و تمام جزئیاتی که هنگام تعریف محصول وارد کردید (عکس‌ها، رنگ‌بندی و موجودی هر رنگ، دسته‌بندی، فروشنده، انبار، ابعاد، قیمت خرید/فروش، توضیحات، تگ‌ها، اطلاعات Affiliate) داخل همان ردیف نمایش داده می‌شود.
-
-### انتخاب چند رنگ‌بندی هنگام خرید
-- در صفحه محصول، دکمه «🎨 انتخاب رنگ و تعداد» یک popup باز می‌کند (`components/common/ResponsiveSheet.vue`): در **موبایل** از پایین صفحه بالا می‌آید (Bottom Sheet با دستگیره)، در **دسکتاپ** به‌صورت مودال وسط صفحه — و چون همیشه با `Teleport` روی کل صفحه قرار می‌گیرد، هیچ اثری روی چیدمان بقیه سایت ندارد. این کامپوننت عمومی است و برای هر منوی دیگری هم در آینده قابل استفاده مجدد است.
-- داخل popup (`components/product/ColorQuantityPicker.vue`): رنگ را انتخاب می‌کنید، تعداد را مشخص می‌کنید، «+ افزودن ردیف» می‌زنید؛ می‌توانید همین کار را برای رنگ دیگری هم تکرار کنید (موجودی هر رنگ با احتساب مقداری که در ردیف‌های دیگر برداشته‌اید به‌روز می‌شود). هر ردیف قابل حذف است. در پایان «افزودن به سبد خرید» همه ردیف‌ها را یک‌جا به سبد اضافه می‌کند — این دقیقاً مشکل قبلی (امکان نداشتن سفارش هم‌زمان دو رنگ از یک محصول) را حل می‌کند.
-
-### گالری تصاویر محصول
-`components/product/ProductGallery.vue` هم در حالت نمایش عادی و هم در حالت بزرگ‌نمایی (زوم):
-- روی صفحات لمسی با کشیدن انگشت به چپ/راست (Swipe) بین عکس‌ها جابه‌جا می‌شود.
-- روی صفحات بزرگ‌تر دو فلش ساده کنار عکس (که در حالت زوم همیشه نمایان‌اند و در حالت عادی با هاور روی عکس ظاهر می‌شوند) همین کار را انجام می‌دهند.
-
-## به‌روزرسانی: اصلاح popup تنوع، نور مخفی هالوژنی دسته‌بندی، شیشه واقعی کارت محصول
-
-### قبل از تست
-کل `supabase/schema.sql` را دوباره اجرا کن (ستون جدید `glow_color` روی `categories`).
-
-### popup «تعیین تعداد و تنوع سفارش»
-- عنوان و متن راهنما طبق خواسته‌ات عوض شد.
-- حالا به‌محض انتخاب یک رنگ (حتی بدون زدن «+ افزودن ردیف»)، دکمه «افزودن به سبد خرید» فعال می‌شود؛ اگر مستقیم همان دکمه را بزنید، انتخاب فعلی خودکار به‌عنوان یک ردیف لحاظ و ثبت می‌شود.
-
-### نور مخفی هالوژنی دسته‌بندی‌ها
-- ستون `glow_color` به جدول `categories` اضافه شد.
-- `/dashboard/categories` حالا دکمه «ویرایش» هم دارد (نه فقط افزودن/حذف) — یعنی می‌توانی بعداً عکس یا رنگ نور یک دسته‌بندی را عوض کنی **بدون اینکه رکورد حذف شود**، پس محصولاتی که به آن دسته متصل‌اند دست‌نخورده می‌مانند.
-- پالت ۲۰ رنگ (`components/common/GlowColorPicker.vue`) برای انتخاب رنگ نور + گزینه «بدون نور».
-- وقتی `glow_color` تنظیم شده باشد، `CategoryCircle.vue` یک هاله‌ی نرم و آرام‌تپنده از همان رنگ پشت آیکون می‌سازد (`filter: blur` + انیمیشن) و عکس با `object-contain` (بدون قاب دایره‌ای سخت) نمایش داده می‌شود — بهترین نتیجه با عکس **PNG با زمینه شفاف** است، چون نور از پشت قسمت‌های شفاف عکس هم دیده می‌شود، درست مثل لامپ‌های مخفی ویترین.
-- دسته‌بندی‌های بدون `glow_color` دقیقاً مثل قبل (قاب دایره‌ای معمولی) نمایش داده می‌شوند.
-
-### شیشه واقعی در کارت محصول
-نوار پایین کارت (عنوان/قیمت) حالا کمی (۲۴ پیکسل) روی لبه‌ی پایین عکس می‌نشیند تا زیرش واقعاً چیزی برای بلور کردن وجود داشته باشد؛ با `backdrop-filter: blur(16px) saturate(180%)` و پس‌زمینه نیمه‌شفاف‌تر (۶۲٪ کدورت به‌جای ۹۰٪)، رنگ واقعی عکس از پشت شیشه محو دیده می‌شود. بیش از ۹۵٪ عکس کاملاً و بدون پوشش نمایان می‌ماند.
-
-## به‌روزرسانی: اصلاح نهایی کارت دسته‌بندی + بازطراحی کامل کارت محصول (عکس تمام‌سایز)
-
-### کارت دسته‌بندی
-هاله‌ی نور مخفی که باعث سرریز عرضی (اسلایدر ناخواسته) در ردیف دسته‌بندی‌های صفحه اول می‌شد کاملاً حذف شد. فقط همان حلقه‌ی نازک دور عکس (مثل استوری اینستاگرام) با رنگ قابل‌انتخاب باقی ماند - بدون هیچ افکت اضافه‌ای که فضای بیرون از دایره را اشغال کند.
-
-### کارت محصول - بازطراحی کامل
-عکس محصول حالا **کل کارت** را پر می‌کند (نسبت ابعاد ۳:۴ - مستطیل عمودی هارمونیک)، همه‌چیز به‌صورت لایه روی عکس:
-- **بالا چپ**: مربع‌های رنگ‌بندی به‌هم‌چسبیده
-- **بالا راست**: بج تخفیف
-- **پایین راست**: قیمت (قیمت قبل از تخفیف با خط‌خوردگی، بالای قیمت جدید)
-- **پایین چپ**: آیکون قلب (Font Awesome) و اشتراک‌گذاری، بالای بج موجود/ناموجود
-- **پایین‌ترین بخش، وسط‌چین**: نام محصول
-
-آیکون‌های قلب و اشتراک‌گذاری از **Font Awesome 6** (نسخه رایگان، از CDN در `nuxt.config.ts` اضافه شده - `fa-regular fa-heart` / `fa-solid fa-heart` برای حالت انتخاب‌شده / `fa-solid fa-share-nodes`) استفاده می‌کنند. دکمه اشتراک‌گذاری از Web Share API مرورگر استفاده می‌کند و در مرورگرهایی که پشتیبانی نمی‌کنند، لینک محصول را کپی می‌کند.
-
-چون همه‌ی متن‌ها سفید روی یک گرادیانت تیره (از پایین به بالا) هستند، دیگر نیازی به تنظیم جداگانه برای حالت روشن/تیره نیست - در هر دو حالت یکسان و خوانا به نظر می‌رسد.
-
-هیچ تغییر دیتابیسی در این مرحله لازم نیست.
-
-## به‌روزرسانی: فیلتر تاریخ شمسی مشترک، آکاردئون حسابداری، جستجوی گردش کالا
-
-### کامپوننت مشترک فیلتر تاریخ شمسی (قابل استفاده در همه‌جا)
-`components/common/JalaliDateRangeFilter.vue` - یک بازه «از تاریخ / تا تاریخ» با سه select (سال/ماه/روز شمسی) برای هرکدام. کاملاً مستقل و قابل استفاده مجدد است:
-```vue
-<script setup>
-import JalaliDateRangeFilter from '~/components/common/JalaliDateRangeFilter.vue'
-const dateRange = ref({ from: null, to: null }) // خروجی همیشه رشته تاریخ میلادی (YYYY-MM-DD) برای فیلتر مستقیم روی created_at
-</script>
 <template>
-  <JalaliDateRangeFilter v-model="dateRange" />
+  <div class="mx-auto max-w-7xl px-3 pb-28 pt-4 sm:px-5 sm:pt-7 lg:pb-8 font-sans text-slate-100" dir="rtl">
+    
+    <!-- ============================ Loading Skeleton ============================ -->
+    <div v-if="pending" class="grid gap-6 lg:grid-cols-2 lg:gap-12">
+      <div class="space-y-3">
+        <div class="skeleton aspect-square w-full rounded-3xl bg-surface-300/60 border border-glass-border"></div>
+        <div class="flex gap-2">
+          <div v-for="i in 5" :key="i" class="skeleton h-16 w-16 rounded-xl bg-surface-300/60 border border-glass-border"></div>
+        </div>
+      </div>
+      <div class="space-y-4 pt-2">
+        <SkeletonBox height="0.9rem" width="35%" />
+        <SkeletonBox height="2.25rem" width="88%" />
+        <SkeletonBox height="2rem" width="45%" />
+        <div class="skeleton h-px w-full bg-glass-border"></div>
+        <SkeletonBox height="2.75rem" width="100%" />
+        <SkeletonBox height="3.25rem" width="100%" />
+        <SkeletonBox height="2.5rem" width="100%" />
+      </div>
+    </div>
+
+    <!-- ============================ Product Found ============================ -->
+    <div v-else-if="product">
+      <!-- ============ HERO: Gallery + Purchase Panel ============ -->
+      <div class="grid gap-6 lg:grid-cols-2 lg:gap-12">
+        
+        <!-- ---------- Gallery (column 1) ---------- -->
+        <div class="relative rounded-3xl border border-glass-border bg-surface-400/40 p-2 backdrop-blur-xl shadow-glass-panel">
+          <ProductGallery :images="images" />
+        </div>
+
+        <!-- ---------- Purchase Panel (column 2, sticky on desktop) ---------- -->
+        <div class="lg:sticky lg:top-24 lg:self-start">
+          <div class="rounded-3xl border border-glass-border bg-surface-400/80 p-5 shadow-glass-panel backdrop-blur-2xl sm:p-7 relative overflow-hidden">
+            
+            <!-- نورپردازی پس‌زمینه کارت خرید (Ambient Glow) -->
+            <div class="absolute -top-20 -right-20 w-40 h-40 bg-purple-600/15 rounded-full blur-3xl pointer-events-none"></div>
+            <div class="absolute -bottom-20 -left-20 w-40 h-40 bg-brand-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+            <!-- Category chip -->
+            <NuxtLink
+              v-if="product.categories"
+              :to="`/?category=${product.categories.id}`"
+              class="inline-flex items-center gap-1.5 rounded-full border border-brand-700/50 bg-brand-900/40 px-3.5 py-1 text-xs font-semibold text-brand-300 transition duration-300 hover:bg-brand-800/60 hover:shadow-[0_0_12px_rgba(120,170,85,0.3)]"
+            >
+              <i class="fa-solid fa-folder-tree text-[10px]"></i>
+              {{ product.categories.title }}
+            </NuxtLink>
+
+            <!-- Title -->
+            <h1 class="mt-3.5 text-2xl font-black leading-snug text-slate-100 sm:text-3xl tracking-tight">
+              {{ product.title }}
+            </h1>
+
+            <!-- Admin-only: today's views -->
+            <p
+              v-if="authStore.user"
+              class="mt-3 inline-flex items-center gap-1.5 rounded-xl border border-glass-border bg-surface-200/80 px-3 py-1.5 text-[11px] text-slate-400 backdrop-blur-md"
+            >
+              <i class="fa-solid fa-eye text-brand-400"></i>
+              بازدید امروز این محصول: <span class="font-bold text-slate-200">{{ todayViews }} نفر</span> <span class="text-slate-500">(فقط برای شما)</span>
+            </p>
+
+            <!-- Price block -->
+            <div class="mt-5 flex flex-wrap items-center gap-x-3 gap-y-2">
+              <span class="text-3xl font-black text-accent drop-shadow-[0_2px_8px_rgba(232,115,74,0.3)]">
+                {{ formatToman(finalPrice) }}
+                <span class="text-base font-semibold text-slate-300">تومان</span>
+              </span>
+              <span
+                v-if="!product.is_affiliate && product.discount_percentage > 0"
+                class="text-lg text-slate-500 line-through"
+              >
+                {{ formatToman(product.sale_price) }}
+              </span>
+              <span
+                v-if="!product.is_affiliate && product.discount_percentage > 0"
+                class="inline-flex items-center gap-1 rounded-full border border-accent/30 bg-accent/15 px-3 py-1 text-xs font-bold text-accent shadow-sm"
+              >
+                <i class="fa-solid fa-bolt text-[10px] animate-pulse"></i>
+                {{ product.discount_percentage }}٪ تخفیف ویژه
+              </span>
+            </div>
+
+            <div class="my-6 h-px w-full bg-gradient-to-r from-transparent via-glass-border to-transparent"></div>
+
+            <!-- Availability -->
+            <div class="flex flex-wrap items-center gap-3">
+              <span
+                v-if="product.is_affiliate"
+                class="inline-flex items-center gap-1.5 rounded-xl border border-sky-500/30 bg-sky-950/40 px-3.5 py-2 text-sm font-semibold text-sky-300 backdrop-blur-md"
+              >
+                <i class="fa-solid fa-arrow-up-right-from-square text-xs"></i>
+                این محصول از {{ product.affiliate_source }} تهیه می‌شود
+              </span>
+              <span
+                v-else
+                class="inline-flex items-center gap-2.5 rounded-xl border px-3.5 py-1.5 text-sm font-semibold backdrop-blur-md"
+                :class="inStock 
+                  ? 'border-brand-700/60 bg-brand-900/40 text-brand-300' 
+                  : 'border-red-500/30 bg-red-950/40 text-red-400'"
+              >
+                <span class="relative flex h-2.5 w-2.5">
+                  <span
+                    v-if="inStock"
+                    class="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-400 opacity-75"
+                  ></span>
+                  <span
+                    class="relative inline-flex h-2.5 w-2.5 rounded-full"
+                    :class="inStock ? 'bg-brand-500' : 'bg-red-500'"
+                  ></span>
+                </span>
+                {{ inStock ? `موجود در انبار (${product.stock_quantity} عدد)` : 'ناموجود' }}
+              </span>
+            </div>
+
+            <!-- Notify-when-available (out of stock only) -->
+            <div v-if="!product.is_affiliate && !inStock" class="mt-4">
+              <button
+                v-if="authStore.user"
+                type="button"
+                class="inline-flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-950/40 px-4 py-2 text-sm font-medium text-amber-300 transition-all hover:bg-amber-900/50 disabled:cursor-default disabled:opacity-60"
+                :disabled="notifyRequested"
+                @click="handleRequestNotify"
+              >
+                <i class="fa-solid fa-bell"></i>
+                {{ notifyRequested ? 'به‌محض موجود شدن به شما اطلاع داده می‌شود' : 'اطلاع‌رسانی موجود شدن' }}
+              </button>
+              <NuxtLink
+                v-else
+                to="/login"
+                class="inline-flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-950/40 px-4 py-2 text-sm font-medium text-amber-300 transition-all hover:bg-amber-900/50"
+              >
+                <i class="fa-solid fa-bell"></i>
+                برای اطلاع از موجود شدن، وارد شوید
+              </NuxtLink>
+            </div>
+
+            <!-- Quantity selector (products without color variants) -->
+            <div v-if="!product.is_affiliate && !colors.length" class="mt-6 flex items-center gap-4">
+              <span class="text-sm font-semibold text-slate-300">تعداد:</span>
+              <div class="flex items-center rounded-2xl border border-glass-border bg-surface-200/90 p-1 shadow-inner">
+                <button
+                  type="button"
+                  class="flex h-9 w-9 items-center justify-center rounded-xl text-slate-300 transition-all hover:bg-surface-50 hover:text-white active:scale-95"
+                  @click="selectedQty = Math.min(maxSelectableQty, selectedQty + 1)"
+                >
+                  <i class="fa-solid fa-plus text-xs"></i>
+                </button>
+                <span class="w-10 text-center text-base font-black text-slate-100">{{ selectedQty }}</span>
+                <button
+                  type="button"
+                  class="flex h-9 w-9 items-center justify-center rounded-xl text-slate-300 transition-all hover:bg-surface-50 hover:text-white active:scale-95"
+                  @click="selectedQty = Math.max(1, selectedQty - 1)"
+                >
+                  <i class="fa-solid fa-minus text-xs"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- Color variants preview -->
+            <div v-if="colors.length" class="mt-6">
+              <div class="mb-3 flex items-center justify-between">
+                <span class="text-sm font-semibold text-slate-300">رنگ‌بندی:</span>
+                <span class="text-xs text-slate-500 font-mono">{{ colors.length }} گزینه</span>
+              </div>
+              <div class="flex flex-wrap items-center gap-3">
+                <span
+                  v-for="c in colors"
+                  :key="c.id"
+                  class="flex items-center gap-1.5"
+                >
+                  <span
+                    class="h-8 w-8 rounded-full border-2 border-glass-border shadow-md ring-2 ring-surface-300 transition-all hover:scale-110"
+                    :style="{ backgroundColor: c.color_hex }"
+                    :title="c.color_name"
+                  ></span>
+                </span>
+              </div>
+              <p class="mt-2.5 text-xs text-slate-400">تنوع و تعداد را هنگام ثبت سفارش انتخاب می‌کنید.</p>
+            </div>
+
+            <div class="my-6 h-px w-full bg-gradient-to-r from-transparent via-glass-border to-transparent"></div>
+
+            <!-- Primary actions -->
+            <div class="flex items-center gap-3">
+              <a
+                v-if="product.is_affiliate"
+                :href="product.affiliate_link"
+                target="_blank"
+                rel="nofollow sponsored noopener"
+                class="inline-flex h-13 flex-1 items-center justify-center gap-2 rounded-2xl bg-sky-600 px-5 text-base font-bold text-white shadow-lg shadow-sky-600/30 transition-all duration-300 hover:bg-sky-500 hover:shadow-sky-500/50 active:scale-[0.98]"
+              >
+                <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                مشاهده و خرید از {{ product.affiliate_source }}
+              </a>
+              <BaseButton
+                v-else
+                class="h-13 flex-1 text-base font-black text-white rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 shadow-neon-purple transition-all duration-300 hover:opacity-95 hover:scale-[1.01] active:scale-[0.98]"
+                :disabled="!colors.length && !inStock"
+                @click="handlePrimaryAction"
+              >
+                <i class="fa-solid fa-bag-shopping ml-1.5"></i>
+                ثبت سفارش
+              </BaseButton>
+
+              <!-- Wishlist -->
+              <button
+                type="button"
+                class="flex h-13 w-13 shrink-0 items-center justify-center rounded-2xl border border-glass-border bg-glass-white text-xl transition-all duration-300 hover:border-red-500/50 hover:bg-red-500/10 active:scale-95 shadow-glass-panel"
+                :class="isWishlisted ? 'text-red-500 drop-shadow-[0_0_10px_rgba(239,68,68,0.5)]' : 'text-slate-400 hover:text-red-400'"
+                :title="isWishlisted ? 'حذف از علاقه‌مندی' : 'افزودن به علاقه‌مندی'"
+                @click="wishlistStore.toggle(product.id)"
+              >
+                <i :class="isWishlisted ? 'fa-solid fa-heart' : 'fa-regular fa-heart'"></i>
+              </button>
+
+              <!-- Share -->
+              <button
+                v-if="!product.is_affiliate"
+                type="button"
+                class="flex h-13 w-13 shrink-0 items-center justify-center rounded-2xl border border-glass-border bg-glass-white text-xl text-slate-400 transition-all duration-300 hover:border-brand-500/50 hover:bg-brand-500/10 hover:text-brand-300 active:scale-95 shadow-glass-panel"
+                title="اشتراک‌گذاری"
+                @click="handleShare"
+              >
+                <i class="fa-solid fa-share-nodes"></i>
+              </button>
+            </div>
+
+            <p v-if="addToCartError" class="mt-3.5 flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-950/30 p-2.5 text-xs font-semibold text-red-400">
+              <i class="fa-solid fa-circle-exclamation text-sm"></i>
+              {{ addToCartError }}
+            </p>
+
+            <!-- Trust badges -->
+            <div
+              v-if="!product.is_affiliate"
+              class="mt-7 grid grid-cols-3 gap-3 border-t border-glass-border pt-6"
+            >
+              <div class="flex flex-col items-center gap-2 text-center group">
+                <div class="flex h-10 w-10 items-center justify-center rounded-2xl border border-brand-700/50 bg-brand-900/30 text-brand-300 transition-transform duration-300 group-hover:scale-110">
+                  <i class="fa-solid fa-truck-fast text-sm"></i>
+                </div>
+                <span class="text-[11px] font-medium text-slate-400">ارسال سریع</span>
+              </div>
+              <div class="flex flex-col items-center gap-2 text-center group">
+                <div class="flex h-10 w-10 items-center justify-center rounded-2xl border border-brand-700/50 bg-brand-900/30 text-brand-300 transition-transform duration-300 group-hover:scale-110">
+                  <i class="fa-solid fa-shield-halved text-sm"></i>
+                </div>
+                <span class="text-[11px] font-medium text-slate-400">پرداخت امن</span>
+              </div>
+              <div class="flex flex-col items-center gap-2 text-center group">
+                <div class="flex h-10 w-10 items-center justify-center rounded-2xl border border-brand-700/50 bg-brand-900/30 text-brand-300 transition-transform duration-300 group-hover:scale-110">
+                  <i class="fa-solid fa-rotate-left text-sm"></i>
+                </div>
+                <span class="text-[11px] font-medium text-slate-400">ضمانت بازگشت</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Quick highlights under the buy-box (brand / vendor / weight / dimensions) -->
+          <div
+            v-if="product.brand || product.vendors || product.weight || product.dimensions"
+            class="mt-4 grid grid-cols-2 gap-3"
+          >
+            <div v-if="product.brand" class="flex items-center gap-2.5 rounded-2xl border border-glass-border bg-surface-400/60 p-3.5 backdrop-blur-xl">
+              <i class="fa-solid fa-copyright text-brand-400 text-sm"></i>
+              <span class="text-xs text-slate-400">برند</span>
+              <span class="mr-auto truncate text-xs font-bold text-slate-200">{{ product.brand }}</span>
+            </div>
+            <div v-if="product.vendors" class="flex items-center gap-2.5 rounded-2xl border border-glass-border bg-surface-400/60 p-3.5 backdrop-blur-xl">
+              <i class="fa-solid fa-store text-brand-400 text-sm"></i>
+              <span class="text-xs text-slate-400">فروشنده</span>
+              <span class="mr-auto truncate text-xs font-bold text-slate-200">{{ product.vendors.name }}</span>
+            </div>
+            <div v-if="product.weight" class="flex items-center gap-2.5 rounded-2xl border border-glass-border bg-surface-400/60 p-3.5 backdrop-blur-xl">
+              <i class="fa-solid fa-weight-hanging text-brand-400 text-sm"></i>
+              <span class="text-xs text-slate-400">وزن</span>
+              <span class="mr-auto truncate text-xs font-bold text-slate-200">{{ product.weight }}</span>
+            </div>
+            <div v-if="product.dimensions" class="flex items-center gap-2.5 rounded-2xl border border-glass-border bg-surface-400/60 p-3.5 backdrop-blur-xl">
+              <i class="fa-solid fa-ruler-combined text-brand-400 text-sm"></i>
+              <span class="text-xs text-slate-400">ابعاد</span>
+              <span class="mr-auto truncate text-xs font-bold text-slate-200">{{ product.dimensions }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ DESCRIPTION + FEEDBACK ============ -->
+      <section v-if="product.description" class="mt-12">
+        <div class="rounded-3xl border border-glass-border bg-surface-400/70 p-6 backdrop-blur-2xl shadow-glass-panel sm:p-8 relative overflow-hidden">
+          <h2 class="mb-5 flex items-center gap-2.5 text-xl font-black text-slate-100 border-r-4 border-brand-700 pr-3">
+            <i class="fa-solid fa-align-right text-brand-400"></i>
+            معرفی و جزییات محصول
+          </h2>
+          <p class="whitespace-pre-line text-sm sm:text-base leading-8 text-slate-300">
+            {{ product.description }}
+          </p>
+
+          <!-- Tags -->
+          <div v-if="product.tags?.length" class="mt-7 flex flex-wrap gap-2.5">
+            <span
+              v-for="tag in product.tags"
+              :key="tag"
+              class="inline-flex items-center rounded-xl border border-glass-border bg-surface-200/80 px-3.5 py-1.5 text-xs text-slate-300 transition-all duration-300 hover:border-brand-500/40 hover:bg-brand-900/30 hover:text-brand-300"
+            >
+              #{{ tag }}
+            </span>
+          </div>
+
+          <!-- Like / Dislike -->
+          <div class="mt-8 border-t border-glass-border pt-6">
+            <ProductLikeButtons
+              :product-id="product.id"
+              :initial-likes="product.likes_count || 0"
+              :initial-dislikes="product.dislikes_count || 0"
+            />
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ APARAT VIDEO ============ -->
+      <div class="mt-8">
+        <ProductAparatVideo v-if="product" :aparat-link="product.aparat_video_link" />
+      </div>
+
+      <!-- ============ COMMENTS ============ -->
+      <div class="mt-8">
+        <ProductComments v-if="product" :product-id="product.id" />
+      </div>
+
+      <!-- ============ RELATED PRODUCTS ============ -->
+      <div class="mt-8">
+        <RelatedProducts v-if="product" :exclude-id="product.id" />
+      </div>
+
+      <!-- Color + quantity picker sheet (opened by «ثبت سفارش» for color products) -->
+      <ResponsiveSheet v-model="colorSheetOpen" title="تعیین تعداد و تنوع سفارش">
+        <ColorQuantityPicker :colors="colors" @confirm="handleColorRowsConfirmed" />
+      </ResponsiveSheet>
+
+      <!-- ============================ Sticky mobile action bar ============================ -->
+      <div
+        class="fixed inset-x-0 bottom-0 z-40 border-t border-glass-border bg-surface-500/90 backdrop-blur-2xl lg:hidden shadow-[0_-8px_25px_rgba(0,0,0,0.5)]"
+        style="padding-bottom: env(safe-area-inset-bottom)"
+      >
+        <div class="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3.5">
+          <!-- Price (hidden for affiliate) -->
+          <div v-if="!product.is_affiliate" class="shrink-0">
+            <p class="text-[10px] font-medium text-slate-400">قیمت نهایی</p>
+            <p class="text-base font-black text-accent">{{ formatToman(finalPrice) }} <span class="text-xs font-normal text-slate-300">تومان</span></p>
+          </div>
+
+          <a
+            v-if="product.is_affiliate"
+            :href="product.affiliate_link"
+            target="_blank"
+            rel="nofollow sponsored noopener"
+            class="flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-sky-600 px-4 text-sm font-bold text-white shadow-lg shadow-sky-600/30 active:scale-95"
+          >
+            <i class="fa-solid fa-arrow-up-right-from-square"></i>
+            خرید از {{ product.affiliate_source }}
+          </a>
+          <BaseButton
+            v-else
+            class="h-12 flex-1 text-sm font-black text-white rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 shadow-neon-purple active:scale-95"
+            :disabled="!colors.length && !inStock"
+            @click="handlePrimaryAction"
+          >
+            <i class="fa-solid fa-bag-shopping ml-1"></i>
+            ثبت سفارش
+          </BaseButton>
+
+          <button
+            type="button"
+            class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-glass-border bg-glass-white text-lg active:scale-95"
+            :class="isWishlisted ? 'text-red-500' : 'text-slate-400'"
+            @click="wishlistStore.toggle(product.id)"
+          >
+            <i :class="isWishlisted ? 'fa-solid fa-heart' : 'fa-regular fa-heart'"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================ Not Found ============================ -->
+    <div v-else class="flex flex-col items-center justify-center py-28 text-center">
+      <div class="flex h-24 w-24 items-center justify-center rounded-3xl border border-glass-border bg-surface-300/50 text-4xl text-slate-500 shadow-glass-panel backdrop-blur-xl">
+        <i class="fa-solid fa-box-open"></i>
+      </div>
+      <p class="mt-6 text-xl font-bold text-slate-200">محصول مورد نظر یافت نشد</p>
+      <NuxtLink
+        to="/"
+        class="mt-5 inline-flex items-center gap-2 rounded-2xl border border-brand-700/60 bg-brand-800 px-6 py-3 text-sm font-bold text-slate-100 shadow-[0_0_20px_rgba(120,170,85,0.3)] transition-all duration-300 hover:bg-brand-700 hover:scale-105 active:scale-95"
+      >
+        <i class="fa-solid fa-house"></i>
+        بازگشت به فروشگاه
+      </NuxtLink>
+    </div>
+  </div>
 </template>
-```
-از این پس هر صفحه‌ی جدیدی که فیلتر بازه‌ی تاریخ لازم داشت، کافیست همین کامپوننت را import کنی. الان در `/dashboard/orders` و `/dashboard/accounting` جایگزین اینپوت‌های میلادی قبلی شده است.
-
-(نکته: کتابخانه `jalaali-js` که مبنای این تبدیل تاریخ است، deprecated نشده - نسخه فعلی‌اش ۱۰ ماه پیش منتشر شده و فعال نگه‌داری می‌شود.)
-
-### حسابداری - آکاردئون + فیلترهای ترکیبی
-`/dashboard/accounting`:
-- هر سند دفتر حسابداری حالا یک ردیف آکاردئونی است؛ با باز کردن هر ردیف:
-  - برای **بدهی خرید**: ریز اقلام فاکتور خرید (محصول، رنگ، تعداد، قیمت واحد، جمع) + نام فروشنده.
-  - برای **درآمد فروش**: محصول، تعداد، قیمت واحد، نام فروشنده‌ی همان محصول، نام مشتری، و شماره سفارش.
-  - برای **دارایی اولیه**: محصول، تعداد، قیمت خرید واحد، فروشنده.
-  - جزئیات هر ردیف فقط در اولین بار که باز می‌شود از دیتابیس خوانده می‌شود (لود تنبل).
-- فیلترها: نام مشتری، نام/شناسه محصول، نوع سند (خرید/فروش/دارایی اولیه)، فروشنده، و بازه تاریخ شمسی. ترکیب «نوع سند = خرید» + «فروشنده = فلان» دقیقاً همان چیزی است که خواستی: تمام فاکتورهای خرید از یک فروشنده مشخص.
-
-⚠️ ستون‌های جدید در `accounting_entries` لازم شدند: `quantity`, `unit_price`, `vendor_id`, `customer_name`. `supabase/schema.sql` را دوباره اجرا کن.
-
-### گردش کالا - جستجو به‌جای انتخاب از لیست
-`/dashboard/inventory` دیگر یک `<select>` ساده از همه محصولات نیست؛ حالا:
-- جستجوی تایپی محصول بر اساس نام یا شناسه (همان `ProductAutocomplete.vue` که در فاکتور خرید هم استفاده می‌شود).
-- جستجوی جداگانه بر اساس **نام خریدار** - با پر کردن این فیلد (با یا بدون انتخاب محصول)، گردش تمام کالاهایی که آن مشتری خریده نمایش داده می‌شود.
-- برچسب QR انبار فقط وقتی نمایش داده می‌شود که دقیقاً یک محصول انتخاب شده باشد.
-
-## به‌روزرسانی: تایید حذف دسته‌بندی + تگ‌های پیش‌فرض هر دسته‌بندی
-
-### قبل از تست
-کل `supabase/schema.sql` را دوباره اجرا کن (ستون جدید `default_tags` روی `categories`).
-
-### تایید حذف دسته‌بندی
-`/dashboard/categories` دیگر با یک کلیک حذف نمی‌کند؛ یک مودال تایید («آیا از حذف دسته‌بندی X مطمئن هستید؟») باز می‌شود و فقط با تایید نهایی حذف انجام می‌شود.
-
-### تگ‌های پیش‌فرض دسته‌بندی
-- فرم افزودن/ویرایش دسته‌بندی حالا یک `TagsInput` برای «تگ‌های پیش‌فرض این دسته‌بندی» دارد.
-- در فرم تعریف محصول جدید (`/dashboard/products/new`) و ویرایش محصول، به‌محض انتخاب یک دسته‌بندی، تگ‌های پیش‌فرض همان دسته‌بندی درست بالای اینپوت تگ‌های محصول به‌صورت چیپ‌های قابل‌کلیک نمایش داده می‌شوند (`components/common/SuggestedTags.vue`). با کلیک روی هرکدام، همان تگ به تگ‌های محصول اضافه می‌شود - نیازی به تایپ دوباره نیست. تگ‌هایی که قبلاً اضافه شده‌اند دیگر در لیست پیشنهادی نشان داده نمی‌شوند.
-
-## به‌روزرسانی بزرگ: سیستم حسابداری دوبل استاندارد + مالیات بر ارزش افزوده ایران
-
-### ⚠️ قبل از هر چیز
-کل `supabase/schema.sql` را از اول در SQL Editor اجرا کن. این نسخه یک زیرسیستم کامل جدید اضافه می‌کند:
-`chart_of_accounts` (دفتر حساب‌ها با کدینگ پایه پیش‌فرض)، `journal_entries` + `journal_lines` (دفتر روزنامه دوبل)، `expenses`، `bank_transfers`، `tax_settings` (تک‌رکوردی)، و ستون‌های مالیاتی/حقوقی جدید روی `orders` و `purchase_invoices`.
-
-### اولین کار: تنظیمات مالیاتی را پر کن
-برو به `/dashboard/tax-settings` و نام حقوقی فروشگاه، شماره اقتصادی، شناسه ملی و نرخ ارزش‌افزوده (پیش‌فرض ۹٪) را وارد کن — این اطلاعات روی همه فاکتورهای رسمی چاپ می‌شود.
-
-### معماری حسابداری دوبل
-`stores/journal.js` قلب سیستم است: تابع `postEntry({ description, source_type, source_id, lines })` هر سند را با آرتیکل‌های بدهکار/بستانکار ثبت می‌کند و **قبل از ثبت بررسی می‌کند که سند بالانس باشد** (جمع بدهکار = جمع بستانکار)، وگرنه خطا برمی‌گرداند. کدینگ پایه (`chart_of_accounts`) شامل صندوق، بانک، حساب‌های دریافتنی/پرداختنی، موجودی کالا، مالیات خرید/فروش، سرمایه، فروش، بهای تمام‌شده و چند حساب هزینه است.
-
-### چه زمانی سند خودکار ثبت می‌شود؟
-| رویداد | سند حسابداری |
-|---|---|
-| تعریف محصول با موجودی اولیه | بدهکار «موجودی کالا» / بستانکار «سرمایه» |
-| صدور فاکتور خرید | بدهکار «موجودی کالا» + «مالیات خرید» / بستانکار «حساب‌های پرداختنی» |
-| ثبت سفارش مشتری (checkout) | بدهکار «دریافتنی» / بستانکار «فروش» + «مالیات فروش» — به‌علاوه سند جدای بهای تمام‌شده (بدهکار COGS / بستانکار موجودی کالا) |
-| تغییر وضعیت سفارش به «مرجوع شد» | خودکار: موجودی انبار (کالا + رنگ) برگردانده می‌شود + سند معکوس فروش و بهای تمام‌شده ثبت می‌شود (`stores/products.js` → `processOrderReturn`، فراخوانی‌شده از `stores/orders.js` → `updateStatus`) |
-| ثبت هزینه (`/dashboard/expenses`) | بدهکار حساب هزینه / بستانکار صندوق یا بانک |
-| حواله بانکی (`/dashboard/bank-transfers`) | واریز: بدهکار بانک / بستانکار حساب انتخابی — برداشت: برعکس |
-
-### صفحات جدید داشبورد (بخش «حسابداری» در سایدبار)
-- **`/dashboard/accounting-documents`** (اسناد حسابداری): دفتر روزنامه کامل، هر سند آکاردئونی با آرتیکل‌های بدهکار/بستانکار؛ امکان ثبت **سند دستی** دلخواه هم هست (با اعتبارسنجی بالانس بودن، زنده حین تایپ). فیلتر: جستجو، نوع منبع سند، بازه تاریخ شمسی.
-- **`/dashboard/expenses`**: ثبت هزینه با انتخاب حساب هزینه و روش پرداخت (نقد/بانک).
-- **`/dashboard/bank-transfers`**: ثبت واریز/برداشت بانکی با کد پیگیری و حساب طرف مقابل.
-- **`/dashboard/vat-report`**: گزارش دوره‌ای ارزش‌افزوده با دکمه‌های سریع انتخاب فصل مالیاتی (بهار/تابستان/پاییز/زمستان) یا بازه دلخواه شمسی؛ فروش خالص، مالیات فروش، خرید خالص، مالیات خرید، و **مالیات خالص قابل پرداخت به دارایی**.
-- **`/dashboard/tax-settings`**: نرخ ارزش‌افزوده + اطلاعات حقوقی.
-- `/dashboard/accounting` (خلاصه ساده قبلی) هم دست‌نخورده باقی مانده برای نمای سریع.
-
-### فاکتورهای چاپی مطابق استاندارد دارایی
-هم فاکتور فروش (`/dashboard/orders/:id`) و هم فاکتور خرید (`/dashboard/purchase-invoices/:id`) حالا شامل: شماره فاکتور ترتیبی رسمی، اطلاعات حقوقی فروشنده (از تنظیمات مالیاتی)، اطلاعات خریدار (و در صورت درخواست «فاکتور رسمی» هنگام خرید، شماره اقتصادی/شناسه ملی خریدار)، و **تفکیک مبلغ خالص + مالیات بر ارزش افزوده + جمع نهایی** هستند.
-
-### چک‌اوت مشتری
-مشتری هنگام تکمیل خرید می‌تواند تیک «نیاز به فاکتور رسمی دارم» را بزند و نام شرکت/شماره اقتصادی/شناسه ملی خودش را وارد کند. مبلغ نمایش‌داده‌شده در سایت **شامل مالیات** فرض می‌شود؛ مبلغ خالص و مالیات به‌صورت خودکار از دل آن استخراج و روی سفارش ذخیره می‌شود.
-
-## به‌روزرسانی: تاریخ شمسی همه‌جا، فیلتر کامل حواله بانکی، پیش‌نمایش چاپ در تمام بخش‌های حسابداری
-
-هیچ تغییر دیتابیسی در این مرحله لازم نیست.
-
-### تاریخ شمسی در فرم‌ها
-`components/common/JalaliDateInput.vue` (کامپوننت جدید، مکمل `JalaliDateRangeFilter.vue`) - ورودی یک تاریخ شمسی با سه select سال/ماه/روز. جایگزین اینپوت‌های میلادی `تاریخ هزینه` (`/dashboard/expenses`) و `تاریخ حواله` (`/dashboard/bank-transfers`) شد.
-
-### فیلتر کامل حواله‌های بانکی
-`/dashboard/bank-transfers` حالا فیلتر دارد: جستجو (کد پیگیری/طرف حساب/بانک)، نوع تراکنش (واریز/برداشت)، حساب طرف مقابل، بازه مبلغ، و بازه تاریخ شمسی.
-
-### پیش‌نمایش چاپ / PDF در همه بخش‌های حسابداری
-کامپوننت جدید `components/dashboard/PrintableSection.vue` به این ۵ صفحه اضافه شد:
-- `/dashboard/accounting` (خلاصه حسابداری)
-- `/dashboard/accounting-documents` (اسناد حسابداری - دفتر روزنامه)
-- `/dashboard/expenses`
-- `/dashboard/bank-transfers`
-- `/dashboard/vat-report`
-
-هرکدام یک عنوان استاندارد دارند که خودکار فیلترهای فعلی اعمال‌شده را در زیرعنوان نشان می‌دهد (مثلاً «نوع سند: فروش | فروشنده: X | بازه تاریخ: ...»)، به‌علاوه نام حقوقی فروشگاه (از تنظیمات مالیاتی) و تاریخ تهیه گزارش. دکمه‌های «چاپ» و «دانلود PDF» با انتخاب اندازه A4/A5 (همان الگوی فاکتورها). برای بخش‌های آکاردئونی (اسناد حسابداری و خلاصه حسابداری)، نسخه چاپی **تمام اسناد فیلترشده را مسطح** نشان می‌دهد - یعنی هر آرتیکل بدهکار/بستانکار (یا هر ردیف سند) یک ردیف مستقل در جدول چاپی است، نه به‌صورت جمع‌وجورشده آکاردئونی.
-
-## به‌روزرسانی: اصلاح زمان‌بندی صدور سند فروش + واحد ریال در بخش حسابداری
-
-هیچ تغییر دیتابیسی در این مرحله لازم نیست.
-
-### اصلاح مهم: زمان صدور سند فروش
-قبلاً کاهش موجودی انبار و صدور سند حسابداری فروش (درآمد فروش + مالیات + بهای تمام‌شده) در همان لحظه‌ی ثبت اولیه سفارش (checkout) انجام می‌شد - در حالی که در آن لحظه سفارش هنوز در وضعیت «در انتظار تایید پرداخت» است و وجهی دریافت نشده. این اشکال رفع شد:
-
-- **در لحظه checkout**: فقط سفارش (با وضعیت `pending`) و ردیف‌های نرمال‌شده آن (`order_items`، برای تفکیک فروشنده در پنل ادمین/تامین‌کننده) ثبت می‌شود. **هیچ کاهش موجودی و هیچ سند حسابداری‌ای صادر نمی‌شود.**
-- **وقتی ادمین وضعیت سفارش را به «تایید سفارش» تغییر می‌دهد** (یعنی پرداخت را تایید کرده): تازه اینجاست که `stores/orders.js` → `updateStatus` به‌صورت خودکار موجودی انبار (کالا + رنگ) را کم می‌کند، گردش کالا ثبت می‌کند، و سند حسابداری دوبل فروش + مالیات بر ارزش افزوده + بهای تمام‌شده کالای فروش‌رفته را صادر می‌کند.
-- این عملیات **idempotent** است (با بررسی وجود سند قبلی برای همان سفارش) - اگر به‌هر دلیل وضعیت دوباره روی «تایید سفارش» قرار بگیرد، دوباره پردازش نمی‌شود.
-- مرجوعی هم اصلاح شد: حالا مرجوعی فقط برای سفارشی که واقعاً قبلاً «تایید» (و پردازش حسابداری) شده بود قابل ثبت است؛ برای سفارشی که هنوز تایید نشده، وضعیت «مرجوع شد» فقط به‌عنوان یک برچسب ثبت می‌شود بدون دستکاری موجودی/سند (چون از اول چیزی کم نشده بود که برگردانده شود).
-
-### واحد پول: تومان در همه‌جا، ریال فقط در «بخش حسابداری»
-طبق درخواستت، ورودی‌های فرم (تعریف محصول، فاکتور خرید، ثبت هزینه، حواله بانکی، سند دستی) همچنان به **تومان** وارد می‌شوند - چیزی تغییر نکرده. اما **نمایش نهایی** در تمام صفحات حسابداری حالا به **ریال** تبدیل شده:
-- `/dashboard/accounting` (خلاصه + جزئیات آکاردئون هر سند)
-- `/dashboard/accounting-documents` (دفتر روزنامه، هم نمای آکاردئونی هم جدول چاپی)
-- `/dashboard/expenses`
-- `/dashboard/bank-transfers`
-- `/dashboard/vat-report`
-
-فاکتورهای رسمی چاپی (فروش و خرید) از قبل به‌درستی ریال نمایش می‌دادند و بدون تغییر ماندند.
-
-## به‌روزرسانی بزرگ: رزرو اتمیک موجودی، اعلان‌ها (زنگوله)، تیکت پشتیبانی، نظرات محصول، پروفایل کاربری
-
-### ⚠️ قبل از هر چیز
-کل `supabase/schema.sql` را از اول اجرا کن. این نسخه اضافه می‌کند: ستون‌های `display_name`/`avatar_url` روی `profiles`، جداول `notifications`، `stock_notify_requests`، `tickets` + `ticket_messages`، `product_comments`، و مهم‌تر از همه **تابع دیتابیسی `confirm_order_stock`** (قلب رفع باگ اصلی).
-
-همچنین یک باکت Storage جدید (`user-media`) برای آواتار لازم است - دستوراتش (کامنت‌شده) در انتهای `schema.sql` هست.
-
-### مشکل ۱ حل شد: امکان سفارش بیش از موجودی واقعی
-- در صفحه محصول، موجودی نمایش‌داده‌شده و قابل‌انتخاب حالا **«موجودی واقعی منهای آنچه سایر کاربران در سفارش‌های در انتظار پرداخت رزرو کرده‌اند، منهای آنچه خودِ همین کاربر از قبل در سبدش دارد»** است (`productsStore.fetchAvailableStock`). یعنی دقیقاً همان مثالی که زدی (۲۵ عدد موجودی، ۱۵ تا رفته تو سبد) دیگر تکرار نمی‌شود؛ دفعه بعد که همان کاربر به صفحه برگردد فقط ۱۰ عدد باقیمانده را می‌بیند.
-- موجودی واقعی در دیتابیس هنوز دست نمی‌خورَد تا وضعیت سفارش «تایید» شود (دقیقاً طبق چیزی که خودت گفتی) - پس اگر کاربر سبدش را رها کند، آن جنس برای بقیه هنوز موجود می‌ماند (چون در نمایش دیگران هم به همان ترتیب کم می‌شود، نه در دیتابیس).
-- **رفع رقابت (Race Condition)**: تابع پستگرس `confirm_order_stock` کاهش موجودی را هنگام «تایید سفارش» به‌صورت کاملاً اتمیک (`UPDATE ... WHERE stock_quantity >= quantity`) انجام می‌دهد. اگر دو مشتری همزمان آخرین موجودی را بخواهند، هرکدام زودتر توسط ادمین «تایید» شود برنده است؛ برای دیگری آن ردیف در فهرست «کمبود موجودی» برمی‌گردد، سند حسابداری‌اش صادر نمی‌شود، وضعیت سفارش به‌جای «تایید سفارش» روی **«بررسی مجدد»** قرار می‌گیرد، و یک **اعلان** برایش ارسال می‌شود: «موجودی X کافی نبود؛ موجودی در دسترس: N عدد».
-
-### زنگوله اعلان‌ها 🔔
-- در صفحه محصولِ ناموجود، دکمه «🔔 اطلاع بده موجود شد» برای کاربران لاگین‌کرده.
-- وقتی با فاکتور خرید موجودی محصولی از صفر به بالا برود، همه مشترکین خودکار پیام «موجود شد» می‌گیرند.
-- آیکون زنگوله در Navbar (`components/layout/NotificationBell.vue`) با شمارنده اعلان نخوانده و منوی کشویی.
-- صفحه کامل `/profile/notifications`.
-
-### تیکت پشتیبانی 🎫
-مشتری از `/profile/tickets` تیکت جدید باز می‌کند، مکالمه رفت‌وبرگشتی دارد. ادمین/مدیر فروش از `/dashboard/tickets` همه تیکت‌ها را می‌بینند و پاسخ می‌دهند (پاسخ ادمین خودکار به مشتری اعلان می‌فرستد).
-
-### نظرات محصول 💬
-- کاربر لاگین‌کرده زیر هر محصول نظر می‌گذارد؛ نظر تا تایید ادمین/مدیر فروش نمایش داده نمی‌شود.
-- ادمین/مدیر فروش از `/dashboard/comments` نظرات را تایید/حذف می‌کنند و می‌توانند **نظر ساختگی** با نام و آواتار دلخواه برای هر محصول بسازند - این نظرات همیشه اول لیست (برچسب «پیشنهاد ویژه») نمایش داده می‌شوند.
-
-### پروفایل کاربری 👤
-آیکون Font Awesome نیم‌تنه (`fa-circle-user`) کنار زنگوله در Navbar → `/profile`. زیرمجموعه‌ها: ویرایش نام/آواتار، سفارش‌های من، نظرات من، پیام‌ها و پشتیبانی، اعلان‌ها، خروج - همه در یک منوی کناری مشترک (`components/profile/ProfileSidebar.vue`).
-
-## به‌روزرسانی بزرگ: ورود/ثبت‌نام حرفه‌ای (ایمیل + موبایل با پیامک) + گوگل/اپل + تنظیمات سایت
-
-### ⚠️ قبل از هر چیز
-1. کل `supabase/schema.sql` را از اول اجرا کن (جداول جدید: `sms_settings`, `phone_otps`, ویوی `sms_settings_public`).
-2. دو Edge Function جدید را deploy کن (نیاز به [Supabase CLI](https://supabase.com/docs/guides/cli)):
-   ```bash
-   supabase functions deploy send-otp
-   supabase functions deploy verify-otp
-   ```
-   نیازی به تنظیم دستی متغیرهای محیطی نیست؛ `SUPABASE_URL` و `SUPABASE_SERVICE_ROLE_KEY` به‌صورت خودکار در اختیار Edge Function ها قرار می‌گیرند.
-
-### آیکون چشم رمز عبور
-`components/common/PasswordInput.vue` (Font Awesome `fa-eye` / `fa-eye-slash`) در فرم ورود و ثبت‌نام با ایمیل جایگزین اینپوت ساده رمز عبور شد.
-
-### دو حالت ورود / دو حالت ثبت‌نام
-صفحات `/login` و `/register` حالا یک تب‌سوییچ بالای فرم دارند: «با ایمیل» / «با موبایل» - **فقط اگر ادمین ورود با موبایل را در تنظیمات سایت فعال کرده باشد** (وگرنه فقط حالت ایمیل نشان داده می‌شود، طبق خواسته‌ات برای وقتی هنوز پنل پیامک نخریده‌ای).
-
-### ثبت‌نام سریع با گوگل / اپل
-زیر فرم «ثبت‌نام با ایمیل»، دو دکمه Google و Apple ID (`components/auth/OAuthButtons.vue`، از `supabase.auth.signInWithOAuth`) اضافه شد. این دو کاملاً کد‌نویسی‌شده و آماده کارند؛ فقط باید در پنل Supabase پروژه‌ات (**Authentication → Providers**) کلیدهای OAuth گوگل و اپل را وارد و فعال کنی - جزئیاتش را در مستندات رسمی Supabase («Auth Google»/«Auth Apple») پیدا می‌کنی.
-
-### ورود/ثبت‌نام با موبایل (پیامک) - معماری
-چون Supabase Auth بومی برای پنل‌های پیامکی ایرانی (کاوه‌نگار، ملی‌پیامک و...) طراحی نشده، یک فلوی سفارشی امن ساخته شد:
-1. کاربر شماره موبایلش را وارد می‌کند → `stores/phoneAuth.js` تابع Edge با نام **`send-otp`** را صدا می‌زند.
-2. `send-otp` یک کد ۶ رقمی می‌سازد، در جدول `phone_otps` ذخیره می‌کند (اعتبار ۲ دقیقه)، و طبق تنظیمات ادمین (از جدول `sms_settings`) آن را از طریق سرویس پیامکی انتخابی ارسال می‌کند.
-3. کاربر کد را وارد می‌کند → تابع Edge **`verify-otp`** کد را چک می‌کند، اگر درست بود یک کاربر Supabase Auth متناظر با آن شماره (با یک ایمیل داخلی نامرئی) پیدا/می‌سازد و یک نشست (session) صادر می‌کند که مستقیماً در مرورگر کاربر فعال می‌شود - بدون هیچ ریدایرکتی.
-4. **کلید API پنل پیامک هرگز به کلاینت/مرورگر فرستاده نمی‌شود** - فقط داخل Edge Function (سمت سرور) خوانده و استفاده می‌شود.
-
-### 🔧 بخشی که باید طبق پنل پیامک خودت تنظیم کنی
-در `supabase/functions/send-otp/index.ts` یک بخش با کامنت «🔧 بخش اختصاصیِ شرکت پیامکی» مشخص شده - نمونه پیاده‌سازی برای **کاوه‌نگار** و **ملی‌پیامک** آماده است؛ اگر سرویس دیگری داری، endpoint و ساختار درخواست را طبق مستندات همان سرویس جایگزین کن (یا از حالت «سرویس دیگر / آدرس سفارشی» در تنظیمات سایت استفاده کن).
-
-### تنظیمات سایت (پنل ادمین)
-صفحه جدید **`/dashboard/site-settings`**:
-- چک‌باکس فعال/غیرفعال‌سازی کامل ورود/ثبت‌نام با موبایل (وقتی خاموش است، تب موبایل اصلاً در صفحات ورود/ثبت‌نام دیده نمی‌شود).
-- انتخاب سرویس‌دهنده (کاوه‌نگار / ملی‌پیامک / سفارشی) + کلید API + شماره خط + (برای حالت سفارشی) آدرس API.
